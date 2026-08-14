@@ -422,7 +422,6 @@ def _read_ledger_for_busy(guard, ledger_path):
 # E006: domain input revision mapping — revision field used for request_signature + input_artifact_revision
 _DOMAIN_INPUT_REVISION_FIELD: dict[str, str] = {
     "pl_generate_system_top": "platform_revision",
-    "platform_generate": "board_package_revision",
 }
 
 # E006: execution context snapshot fields for domain local commands
@@ -433,16 +432,20 @@ _EXECUTION_SNAPSHOT_FIELDS = ("session_id", "board_id", "project_path",
 # E004: IMMUTABLE success-stage mapping — single source of truth for all modules
 # B07: PL bridge tools advance the frozen B01 §5 serial chain
 # (docs/development/mcp/B04_single_channel_audit.md §4.3 — the ONLY forward path):
-#   PL_BUILD      --pl_synthesize--------> PL_IMPLEMENT
-#   PL_IMPLEMENT  --pl_route (completes place_and_route)--> PL_TIMING
-#   PL_TIMING     --pl_analyze_timing (timing_met=true)--> PL_BITSTREAM
-#   PL_BITSTREAM  --pl_generate_bitstream--> PS_BUILD
+#   PLATFORM_DESIGN --platform_export_manifest--> PL_GENERATE
+#       (B11 phase 2 decision (a): the terminal platform atom replaces the
+#        removed B05 shortcut platform_generate as the forward path)
+#   PL_GENERATE    --pl_generate_system_top-----> PL_BUILD
+#   PL_BUILD       --pl_synthesize--------------> PL_IMPLEMENT
+#   PL_IMPLEMENT   --pl_route (completes place_and_route)--> PL_TIMING
+#   PL_TIMING      --pl_analyze_timing (timing_met=true)--> PL_BITSTREAM
+#   PL_BITSTREAM   --pl_generate_bitstream------> PS_BUILD
 # pl_place does NOT advance (it is the placement half of implementation and
 # runs inside PL_IMPLEMENT; next_stage stays None).
 from types import MappingProxyType as _MappingProxyType
 _PL_SUCCESS_STAGE = _MappingProxyType({
     "pl_generate_system_top": "PL_BUILD",
-    "platform_generate": "PL_GENERATE",
+    "platform_export_manifest": "PL_GENERATE",
     "pl_synthesize": "PL_IMPLEMENT",
     "pl_route": "PL_TIMING",
     "pl_analyze_timing": "PL_BITSTREAM",
@@ -1094,30 +1097,6 @@ class CommandRunner:
                     tm = rd.get("timing_met")
                     if isinstance(tm, bool):
                         completion_evidence = {"timing_met": tm}
-
-                if tool_name == "platform_generate":
-                    manifest_path = rd.get("manifest_path")
-                    evidence = _verified_manifest_evidence(
-                        manifest_path,
-                        expected_sha=rd.get("manifest_sha256"),
-                        revision_keys=("platform_revision", "manifest_revision"),
-                    )
-                    if evidence is None:
-                        self._terminal_failed(op_id, {
-                            "status": "error", "error": {
-                                "code": "ARTIFACT_STALE",
-                                "message": "Platform manifest verification failed",
-                                "details": {
-                                    "reason_code": "MANIFEST_PUBLISH_FAILED"}}},
-                            "MANIFEST_PUBLISH_FAILED", artifact_failed=True,
-                            artifact_step="PLATFORM_MANIFEST_PUBLISH")
-                        return
-                    completion_evidence = {
-                        **(completion_evidence or {}), **evidence}
-                    terminal_observation = _local_artifact_observation(
-                        "PLATFORM_MANIFEST_PUBLISH", "COMPLETE")
-                    artifact_state = "PUBLISHED"
-                    oar = evidence["manifest_revision"]
 
                 if tool_name == "pl_generate_bitstream":
                     op_observe(

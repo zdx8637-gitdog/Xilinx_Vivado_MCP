@@ -275,7 +275,7 @@ async def import_hardware(
         return err
     dst = os.path.join(pp, os.path.basename(xsa_path))
     try:
-        # ``platform_generate`` may already publish the XSA directly into the
+        # The platform flow may already publish the XSA directly into the
         # requested XSCT workspace.  Treat that case as an idempotent import
         # instead of surfacing shutil.SameFileError and forcing callers to
         # stage the binary through an out-of-band filesystem command.

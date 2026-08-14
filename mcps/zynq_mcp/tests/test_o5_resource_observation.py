@@ -271,7 +271,7 @@ async def test_o5_foreign_and_stale_jtag_lease_fail_before_executor(rtg, tmp_pat
 
 @pytest.mark.asyncio
 async def test_o5_uart_capture_ledger_marker_and_stop(rtg, tmp_path):
-    serial = _FakeSerial([b"boot ", b"GPIO_E2E_PASS\n"])
+    serial = _FakeSerial([b"boot ", b"LED_E2E_PASS\n"])
     guard, lp, _bridge, controller, _uart, runner = _runtime(
         rtg, tmp_path, serial_factory=lambda: serial)
     start = await runner.run_command(
@@ -287,7 +287,7 @@ async def test_o5_uart_capture_ledger_marker_and_stop(rtg, tmp_path):
 
     wait = await runner.run_command(
         "ps_wait_uart_capture", {"capture_id": capture_id,
-                                 "markers": ["GPIO_E2E_PASS"], "timeout_s": 2},
+                                 "markers": ["LED_E2E_PASS"], "timeout_s": 2},
         "sid-o5", BOARD, str(tmp_path), executor="local",
         local_fn=uart_capture.wait_uart_capture,
         resource_req=ResourceRequirement(
@@ -296,9 +296,9 @@ async def test_o5_uart_capture_ledger_marker_and_stop(rtg, tmp_path):
     record = matched.worker["uart_capture"]
     observation = matched.previous_operation["observation"]
     assert record["status"] == "MATCHED"
-    assert record["bytes_received"] >= len(b"GPIO_E2E_PASS")
+    assert record["bytes_received"] >= len(b"LED_E2E_PASS")
     assert record["last_rx_at"]
-    assert record["markers_found"] == ["GPIO_E2E_PASS"]
+    assert record["markers_found"] == ["LED_E2E_PASS"]
     assert observation["status_source"] == STATUS_SOURCE_RESOURCE
     assert observation["backend"] == "UART"
     assert observation["current_step"] == "UART_MARKER_MATCH"

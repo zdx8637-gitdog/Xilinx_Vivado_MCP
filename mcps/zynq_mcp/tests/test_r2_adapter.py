@@ -753,7 +753,7 @@ class TestR2Adapter:
                     async with ClientSession(r,w) as s:
                         await s.initialize()
                         caps=json.loads((await s.call_tool("get_capabilities",{})).content[0].text)
-                        assert caps["status"]=="success" and caps["data"]["total_tools"]==101  # E007 + B06 2nd batch (11 BSP) + B07 PL bridge (26) + B06 third batch (9) + B01 UART capture (3) + B01 UART diagnostics (1) + B01 Phase 4 verify_consistency (1) + B01 Phase 6 observation (1) + B05-R2 platform atoms (14) + ps_ensure_arm_accessible (1)
+                        assert caps["status"]=="success" and caps["data"]["total_tools"]==100  # B11 phase 2: platform_generate removed → 100 total (9 control + 91 domain)
                 await asyncio.sleep(1.5)
                 g2=InstanceGuard(rt,"ws-r2-check")
                 try:g2.determine_role();assert g2.is_primary

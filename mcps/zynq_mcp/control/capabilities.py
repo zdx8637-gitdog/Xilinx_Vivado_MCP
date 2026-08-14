@@ -8,7 +8,6 @@ from mcp.types import Tool
 MCP_NAME = "zynq"
 MCP_VERSION = "0.4.0"
 PLANNED_DOMAIN_APIS = 43
-DOMAIN_APIS_IMPLEMENTED = 91  # R3.1-C(1) + B05(1) + B06 first batch(22 PS) + B06 second batch(11 BSP) + B06 third batch(9 download/debug) + B07 PL bridge(26) + B01 UART capture(3) + B01 Phase 4 verify_consistency(1) + B01 UART diagnostics(1) + B01 Phase 6 observation(1) + B05-R2 platform atoms(14) + ps_ensure_arm_accessible(1)
 
 CONTROL_TOOLS = [
     Tool(name="create_session", description="Create a new Zynq development session",
@@ -32,8 +31,6 @@ CONTROL_TOOLS = [
 ]
 
 DOMAIN_TOOLS: list[Tool] = [
-    Tool(name="platform_generate", description="Generate Platform BD (PS7 + AXI GPIO) and export XSA + Manifest. Inputs are derived from active session context.",
-         inputSchema={"type": "object", "properties": {}, "additionalProperties": False}),
     Tool(name="pl_generate_system_top", description="Generate system_top.v instantiating BD wrapper from Platform Manifest",
          inputSchema={"type": "object",
              "properties": {"wrapper_path": {"type": "string", "minLength": 1}},
@@ -58,7 +55,7 @@ DOMAIN_TOOLS: list[Tool] = [
          inputSchema={"type": "object", "properties": {"scope": {"type": "string"}}}),
     Tool(name="ps_initialize_ps", description="Run the PS7 init sequence: source ps7_init.tcl → ps7_init → ps7_post_config. Initializes clocks/PLLs/MIO/DDR so ARM cores can be accessed via JTAG.",
          inputSchema={"type": "object", "properties": {"tcl_path": {"type": "string"}}}),
-    Tool(name="ps_load_hardware", description="Register PL hardware design (AXI memory map) with the PS via XSDB `loadhw <xsa>`. Must be called after ps_initialize_ps and before ps_download_elf, otherwise PL peripherals (AXI GPIO etc.) are invisible to ARM code.",
+    Tool(name="ps_load_hardware", description="Register PL hardware design (AXI memory map) with the PS via XSDB `loadhw <xsa>`. Must be called after ps_initialize_ps and before ps_download_elf, otherwise PL peripherals are invisible to ARM code.",
          inputSchema={"type": "object", "properties": {"xsa_path": {"type": "string", "minLength": 1}}, "required": ["xsa_path"]}),
     Tool(name="ps_ensure_arm_accessible", description="Ensure ARM cores are visible on the JTAG chain. After a board power-cycle the ARM DAP can be in a 'power-up not acknowledged' state (DAP status 0x30000021) with only DAP + xc7z020 enumerated and no ARM Cortex-A9 cores. Selects the ARM DAP and runs `rst -system` to bring the cores back; recovery_needed=false when the cores already enumerate.",
          inputSchema={"type": "object", "properties": {}}),
@@ -257,19 +254,24 @@ DOMAIN_TOOLS: list[Tool] = [
     # analysis over the UART capture output already produced by
     # ps_stop_uart_capture / ps_wait_uart_capture. No hardware, no side
     # effects, always idempotent. Empty uart_text is a valid TIMEOUT input so
-    # the schema allows "" (no minLength) — markers default to the B01
-    # GPIO_E2E_* tokens in domains/verification/observation.py.
-    Tool(name="evaluate_observation", description="B01 Phase 6: machine-decidable PASS/FAIL/TIMEOUT/INCOMPLETE verdict from UART capture text (pure text analysis, no hardware)",
+    # the schema allows "" (no minLength). pass_marker / fail_marker are
+    # REQUIRED (B11 phase 2: the B01 GPIO_E2E_* defaults in
+    # domains/verification/observation.py were removed — markers belong to the
+    # exam firmware, not to the adjudicator).
+    Tool(name="evaluate_observation", description="B01 Phase 6: machine-decidable PASS/FAIL/TIMEOUT/INCOMPLETE verdict from UART capture text (pure text analysis, no hardware; pass/fail markers required)",
          inputSchema={"type": "object", "properties": {
              "uart_text": {"type": "string"},
              "pass_marker": {"type": "string", "minLength": 1},
              "fail_marker": {"type": "string", "minLength": 1}},
-             "required": ["uart_text"],
+             "required": ["uart_text", "pass_marker", "fail_marker"],
              "additionalProperties": False}),
     # B05-R2 Platform Domain atomic APIs (14). Composable building blocks from
     # B01 §7 Phase 1 / Architecture §4.3.3. Each sends Tcl through the shared
-    # _run_tcl channel (same as platform_generate) and never advances stage.
-    # The shortcut platform_generate {} is UNCHANGED (registered above).
+    # _run_tcl channel. Command atoms do not advance the workflow stage except
+    # platform_export_manifest — the terminal atom of the platform sequence —
+    # which advances PLATFORM_DESIGN → PL_GENERATE on success (B11 phase 2
+    # decision (a); the removed B05 shortcut platform_generate was the former
+    # sole forward path of that transition).
     # Command atoms (12): session context keys (board_id/project_path/
     # board_profile_sha256) are injected by the dispatcher; the VivadoAdapter
     # is injected by the CommandRunner (_pl_adapter marker). Query atoms (2):
@@ -320,12 +322,12 @@ DOMAIN_TOOLS: list[Tool] = [
              "source": {"type": "string", "minLength": 1},
              "targets": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}},
              "required": ["source", "targets"], "additionalProperties": False}),
-    Tool(name="platform_connect_reset", description="Connect one reset source to a list of reset inputs, e.g. source='rst_ps7_50M/peripheral_aresetn' targets=['axi_gpio_led/s_axi_aresetn']; polarity is NOT auto-detected — caller picks the right pins (SmartConnect uses interconnect_aresetn)",
+    Tool(name="platform_connect_reset", description="Connect one reset source to a list of reset inputs, e.g. source='rst_ps7_50M/peripheral_aresetn' targets=['my_slave_0/s_axi_aresetn']; polarity is NOT auto-detected — caller picks the right pins (SmartConnect uses interconnect_aresetn)",
          inputSchema={"type": "object", "properties": {
              "source": {"type": "string", "minLength": 1},
              "targets": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}},
              "required": ["source", "targets"], "additionalProperties": False}),
-    Tool(name="platform_set_address", description="Set a slave segment base address (and optional size), segment format 'axi_gpio_led/S_AXI'",
+    Tool(name="platform_set_address", description="Set a slave segment base address (and optional size), segment format '<ip_instance>/S_AXI', e.g. 'my_slave_0/S_AXI'",
          inputSchema={"type": "object", "properties": {
              "segment": {"type": "string", "minLength": 1},
              "base": {"type": ["integer", "string"], "minLength": 1},
@@ -374,6 +376,11 @@ def _inject_ps_session_schema(tool: Tool) -> Tool:
 DOMAIN_TOOLS = [_inject_ps_session_schema(tool) for tool in DOMAIN_TOOLS]
 ALL_TOOLS: list[Tool] = CONTROL_TOOLS + DOMAIN_TOOLS
 
+# Mechanical derivation (B11 phase 2): the implemented-domain count is
+# len(DOMAIN_TOOLS). A hand-maintained constant drifted from the registered
+# count (B10 known limitation ①) and is no longer kept in sync manually.
+DOMAIN_APIS_IMPLEMENTED = len(DOMAIN_TOOLS)
+
 
 def build_capabilities(instance_role: str = "primary",
                        adapter_status: str = "absent") -> dict:
@@ -383,9 +390,9 @@ def build_capabilities(instance_role: str = "primary",
         "status": "adapter_ready" if adapter_status == "ready" else "single_channel_ready",
         "instance_role": instance_role,
         "domains": {
-            "platform":   {"implemented": 15, "planned": 14, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},  # B05 platform_generate(1) + B05-R2 atoms(14)
+            "platform":   {"implemented": 14, "planned": 14, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},  # B05-R2 atoms(14); platform_generate removed B11 phase 2
             "pl":         {"implemented": 27, "planned": 12, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},
-            "ps":         {"implemented": 47, "planned": 19, "status": "bridge_ready"},
+            "ps":         {"implemented": 48, "planned": 19, "status": "bridge_ready"},
             "control":    {"implemented": len(CONTROL_TOOLS), "total": len(CONTROL_TOOLS)},
             "observation": {"implemented": 1, "total": 4},
             "recovery":   {"implemented": 2, "total": 2},

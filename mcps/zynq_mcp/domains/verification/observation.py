@@ -5,9 +5,10 @@ Machine-decidable verdict from UART capture text. The capture lifecycle
 text; this module is a pure text analysis over that output — no hardware, no
 JTAG, no side effects.
 
-Decision rules (B01 §5 Phase 6, FROZEN):
-  · UART contains "GPIO_E2E_PASS"  → PASS
-  · UART contains "GPIO_E2E_FAIL"  → FAIL
+Decision rules (B01 §5 Phase 6, FROZEN — markers are now caller-supplied,
+B11 phase 2: the B01 GPIO_E2E_* defaults were removed):
+  · UART contains pass_marker        → PASS
+  · UART contains fail_marker        → FAIL
   · UART timeout (no complete frame) → TIMEOUT
   · UART contains incomplete/partial markers → INCOMPLETE
 
@@ -45,7 +46,7 @@ def _find_partial_markers(text: str, markers: list[str]) -> list[str]:
 
     For every marker that is NOT fully present in the text, scan its proper
     prefixes (marker[:-1], marker[:-2], ... down to _MIN_PARTIAL_LEN) and
-    report the longest one found — e.g. ``GPIO_E2E_PAS`` when the PASS frame
+    report the longest one found — e.g. ``TEST_E2E_PAS`` when the PASS frame
     was cut short mid-transmission. Purely diagnostic: the verdict is decided
     on the full markers only.
     """
@@ -70,8 +71,8 @@ async def evaluate_observation(
     bridge=None,
     *,
     uart_text: str,
-    pass_marker: str = "GPIO_E2E_PASS",
-    fail_marker: str = "GPIO_E2E_FAIL",
+    pass_marker: str | None = None,
+    fail_marker: str | None = None,
 ) -> dict:
     """Machine-decidable PASS/FAIL from UART capture text (B01 §5 Phase 6).
 
@@ -87,8 +88,9 @@ async def evaluate_observation(
     Args:
         bridge: accepted for the uniform ps_* calling convention; unused.
         uart_text: full captured UART output (may be empty — that is TIMEOUT).
-        pass_marker: marker that declares a PASS.
-        fail_marker: marker that declares a FAIL.
+        pass_marker: marker that declares a PASS. REQUIRED (no GPIO default;
+            B11 phase 2). A missing/empty/non-string value is INVALID_ARGUMENT.
+        fail_marker: marker that declares a FAIL. REQUIRED (same rule).
 
     Returns:
         {"status": "success", "data": {

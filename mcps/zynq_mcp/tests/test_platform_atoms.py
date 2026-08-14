@@ -816,7 +816,7 @@ class TestExportManifestCommandDispatch:
     board_profile_sha256 from the ledger context before the atom runs.
     """
 
-    def _dispatch_once(self, tmp_path):
+    def _dispatch_once(self, tmp_path, stage="PLATFORM_DESIGN"):
         from mcps.zynq_mcp.dispatcher import ZynqDispatcher
         proj = tmp_path / "proj"
         (proj / "hdl").mkdir(parents=True)
@@ -837,7 +837,7 @@ class TestExportManifestCommandDispatch:
             l.context["board_profile_sha256"] = _SHA
             l.context["board_package_revision"] = _SHA
             l.context["expected_board_revision"] = _SHA
-            l.context["current_stage"] = "PLATFORM_DESIGN"
+            l.context["current_stage"] = stage
             return l
 
         ledger_transaction(g, lp, _init)
@@ -877,6 +877,60 @@ class TestExportManifestCommandDispatch:
                 manifest = json.load(f)
             assert manifest["board_profile_sha256"] == _SHA
             assert manifest["xsa_path"] == "platform.xsa"
+        finally:
+            g.release_owner_lock(); shutil.rmtree(str(rt), ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_export_manifest_success_advances_stage(self, tmp_path):
+        """B11 phase 2 decision (a): platform_export_manifest advances
+        PLATFORM_DESIGN → PL_GENERATE and publishes platform_revision into
+        the session context (the revision pl_generate_system_top binds)."""
+        rt, g, lp, disp, proj, fake_adapter = self._dispatch_once(tmp_path)
+        try:
+            msgs = await disp.dispatch("platform_export_manifest", {}, True)
+            data = json.loads(msgs[0].text)
+            assert data["status"] == "success", data
+            oid = data["data"]["operation_id"]
+            l2 = await TestCommandRunnerInjection._wait_terminal(g, lp, oid)
+            assert l2 is not None
+            assert l2.previous_operation["status"] == OP_SUCCEEDED
+            assert l2.context["current_stage"] == "PL_GENERATE"
+            assert l2.context.get("platform_revision", "").startswith("sha256:")
+            ev = l2.previous_operation.get("completion_evidence") or {}
+            assert ev.get("stage_advanced_from") == "PLATFORM_DESIGN"
+            assert ev.get("stage_advanced_to") == "PL_GENERATE"
+        finally:
+            g.release_owner_lock(); shutil.rmtree(str(rt), ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_export_manifest_rejected_when_stage_not_platform_design(self, tmp_path):
+        """The stage gate admits platform_export_manifest only from
+        PLATFORM_DESIGN — a later-stage call fails closed with
+        STAGE_PREREQUISITE_UNMET and the atom never runs (frozen stage
+        machine cannot be pushed forward illegally)."""
+        rt, g, lp, disp, proj, fake_adapter = self._dispatch_once(
+            tmp_path, stage="PL_BUILD")
+        try:
+            msgs = await disp.dispatch("platform_export_manifest", {}, True)
+            data = json.loads(msgs[0].text)
+            assert data["status"] == "error", data
+            assert data["error"]["details"]["reason_code"] == "STAGE_PREREQUISITE_UNMET"
+            assert fake_adapter.calls == []  # the atom never ran
+        finally:
+            g.release_owner_lock(); shutil.rmtree(str(rt), ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_removed_shortcut_rejected_as_unknown_tool(self, tmp_path):
+        """B11 phase 2: the old shortcut platform_generate is gone from the
+        public contract — dispatching it fails closed with UNKNOWN_TOOL (the
+        stage-advance old path is correctly rejected)."""
+        rt, g, lp, disp, proj, fake_adapter = self._dispatch_once(tmp_path)
+        try:
+            msgs = await disp.dispatch("platform_generate", {}, True)
+            data = json.loads(msgs[0].text)
+            assert data["status"] == "error"
+            assert data["error"]["details"]["reason_code"] == "UNKNOWN_TOOL"
+            assert fake_adapter.calls == []
         finally:
             g.release_owner_lock(); shutil.rmtree(str(rt), ignore_errors=True)
 

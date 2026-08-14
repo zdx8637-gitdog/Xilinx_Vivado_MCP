@@ -10,12 +10,15 @@ function is stateless: it receives the Vivado
 adapter as its first positional argument (injected by the CommandRunner via
 the ``_pl_adapter`` marker for command atoms, or by the dispatcher query
 handlers for query atoms) and forwards every Tcl command through the shared
-``_run_tcl`` channel — the same channel used by ``platform_generate``, with
-the same cold-start retry and the same error contract.
+``_run_tcl`` channel — the same channel the removed B05 shortcut
+``platform_generate`` used, with the same cold-start retry and the same
+error contract.
 
-These atoms do NOT advance the workflow stage (next_stage=None). They are
-building blocks that compose in any order. The shortcut ``platform_generate``
-remains unchanged and is NOT rewritten in terms of these atoms.
+Command atoms do NOT advance the workflow stage (next_stage=None) except
+``platform_export_manifest`` — the terminal atom of the platform sequence —
+which advances PLATFORM_DESIGN → PL_GENERATE on success (B11 phase 2
+decision (a)). The B05 shortcut ``platform_generate`` was removed in B11
+phase 2; these atoms are the replacement path.
 
 Atoms:
   command (12, adapter injected by CommandRunner):
@@ -111,7 +114,8 @@ async def platform_add_ps7(adapter, *, board_id: str,
                            preset_name: str | None = None) -> dict:
     """Instantiate and configure the Zynq PS7 from the board preset (atom API).
 
-    Sequence (mirrors platform_generate's proven Tcl):
+    Sequence (mirrors the proven Tcl of the B05 platform_generate shortcut,
+    removed in B11 phase 2):
       1. ensure a BD design exists (create_design only makes the project)
       2. create_bd_cell processing_system7_0
       3. apply_bd_automation (externalize FIXED_IO / DDR)
@@ -330,7 +334,7 @@ async def platform_connect_clock(adapter, *, source: str,
     """Connect one clock source to a list of clock inputs (atom API).
 
     Example: source="processing_system7_0/FCLK_CLK0",
-             targets=["smartconnect_0/aclk", "axi_gpio_led/s_axi_aclk"].
+             targets=["smartconnect_0/aclk", "my_slave_0/s_axi_aclk"].
     """
     if not isinstance(source, str) or not source.strip():
         raise PlatformError("source must be a non-empty string", "INVALID_ARGUMENT")
@@ -356,7 +360,7 @@ async def platform_connect_reset(adapter, *, source: str, targets: list) -> dict
     the nets with ``connect_bd_net``.
 
     Example: source="rst_ps7_50M/peripheral_aresetn",
-             targets=["axi_gpio_led/s_axi_aresetn"].
+             targets=["my_slave_0/s_axi_aresetn"].
     """
     if not isinstance(source, str) or not source.strip():
         raise PlatformError("source must be a non-empty string", "INVALID_ARGUMENT")
@@ -381,7 +385,7 @@ async def platform_set_address(adapter, *, segment: str, base,
                                size: int | None = None) -> dict:
     """Set a slave segment base address (and optional size) (atom API).
 
-    segment format: "axi_gpio_led/S_AXI". When ``size`` is given the matching
+    segment format: "my_slave_0/S_AXI". When ``size`` is given the matching
     CONFIG.C_HIGHADDR is derived (base + size - 1) and written in the same
     Tcl command.
     """
@@ -505,10 +509,10 @@ def _parse_manifest_address_map(tcl_output: str) -> dict:
     """Parse per-master ``get_bd_addr_segs`` output into an address_map dict.
 
     Each output line is "<master> <segment> <OFFSET> <RANGE>", e.g.
-    ``processing_system7_0/M_AXI_GP0 axi_gpio_led/S_AXI/reg0 0x0000000041200000 64K``.
-    The OFFSET is normalized (``0x0000000041200000`` -> ``0x41200000``) so it
-    matches the generate_platform EXPECTED_GPIO_ADDRESS form. Lines with fewer
-    than 4 tokens are ignored (fail-soft on partial output).
+    ``processing_system7_0/M_AXI_GP0 my_slave_0/S_AXI/reg0 0x0000000040000000 64K``.
+    The OFFSET is normalized (``0x0000000040000000`` -> ``0x40000000``) so
+    addresses are canonical 0x-prefixed hex in the published manifest. Lines
+    with fewer than 4 tokens are ignored (fail-soft on partial output).
     """
     amap = {}
     for line in tcl_output.splitlines():
@@ -533,12 +537,13 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
                                    board_profile_sha256: str | None = None) -> dict:
     """Re-export the structured platform manifest JSON from the open BD (atom API).
 
-    Standalone query/set: unlike ``platform_generate`` (which exports the
-    manifest internally), this atom re-publishes the platform manifest on
-    demand from the CURRENT Block Design state. The BD must be ready (a
-    design open) and the wrapper + XSA must already exist under
-    ``{project_path}`` — the platform schema requires both files (path +
-    SHA256), so missing artifacts fail closed with MANIFEST_GENERATION_FAILED.
+    Standalone query/set: unlike the removed B05 shortcut ``platform_generate``
+    (which exported the manifest internally), this atom re-publishes the
+    platform manifest on demand from the CURRENT Block Design state. The BD
+    must be ready (a design open) and the wrapper + XSA must already exist
+    under ``{project_path}`` — the platform schema requires both files (path +
+    SHA256), so missing artifacts fail closed with
+    MANIFEST_GENERATION_FAILED.
 
     Live data extracted from the BD:
       - ip_list:     get_bd_cells *
@@ -552,6 +557,13 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
     filename must match the computed revision (publish_manifest enforces it).
     Reuses publish_manifest() — an unchanged re-export returns
     ``"already_exists_same"`` without overwriting (idempotent).
+
+    Stage machine (B11 phase 2 decision (a)): this is the terminal atom of
+    the platform sequence. On success the CommandRunner advances the workflow
+    stage PLATFORM_DESIGN → PL_GENERATE and publishes ``platform_revision``
+    into the session context (``_context_updates``) — the revision
+    pl_generate_system_top binds against. Both effects replace the removed
+    B05 shortcut platform_generate.
     """
     if path is not None and (not isinstance(path, str) or not path.strip()):
         raise PlatformError("path must be a non-empty string", "INVALID_ARGUMENT")
@@ -570,8 +582,7 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
     bd_data = await _run_tcl(adapter, "llength [get_bd_designs -quiet]",
                              "count_bd_designs")
     if _tcl_output(bd_data).strip() == "0":
-        raise ManifestError("No Block Design open — run platform_generate or "
-                            "platform_add_ps7 first")
+        raise ManifestError("No Block Design open — run platform_add_ps7 first")
 
     # 2. IP list from the open BD.
     ips_data = await _run_tcl(adapter, "get_bd_cells *", "list_bd_cells")
@@ -611,7 +622,7 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
     wrapper_sha = _sha256_file(wrapper_path)
     xsa_path = os.path.join(pp, "platform.xsa")
     if not os.path.isfile(xsa_path):
-        raise ManifestError("platform.xsa not found — run platform_generate or "
+        raise ManifestError("platform.xsa not found — run "
                             "platform_export_hardware first")
     xsa_sha = _sha256_file(xsa_path)
 
@@ -623,14 +634,15 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
     preset_rel = f"boards/{board_id}/ps7_preset.tcl"
     preset_sha = _sha256_file(preset_path)
 
-    # 7. Vivado version (fallback mirrors generate_platform).
+    # 7. Vivado version (fallback mirrors the platform manifest publisher).
     try:
         ver_data = await _run_tcl(adapter, "puts [version -short]", "vivado_version")
         vivado_version = _tcl_output(ver_data).strip() or "2023.1"
     except AdapterError:
         vivado_version = "2023.1"
 
-    # 8. Compute revision + build the manifest (mirror generate_platform shape).
+    # 8. Compute revision + build the manifest (mirror the platform manifest
+    #    shape published by the B05 flow).
     wrapper_rel = f"hdl/{wrapper_name}"
     revision_inputs = {
         "board_profile_sha256": board_profile_sha256,
@@ -678,7 +690,7 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
         "address_map": address_map,
         "clock_tree": clock_tree,
         "wrapper_name": wrapper_name,
-    }}
+    }, "_context_updates": {"platform_revision": platform_revision}}
 
 
 # ═══════════════════════════════════════════

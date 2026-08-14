@@ -1,14 +1,23 @@
-"""B05 Platform Domain component tests — no Vivado required."""
+"""B05 Platform Domain component tests — no Vivado required.
+
+B11 phase 2: the B05 shortcut generate_platform / platform_generate was
+removed (see docs/development/mcp/B11_platform_generate_erratum.md). The
+shortcut-only component tests were remapped 1→1 to the surviving atom-layer
+equivalents (address-map parsing via _parse_manifest_address_map, adapter
+fail-closed via platform_add_ps7); all other tests (board package, top-BD
+selection, error types, manifest contract) are unchanged.
+"""
 import json, os, re, hashlib, pytest
 from pathlib import Path
 
 from mcps.zynq_mcp.domains.platform.platform_domain import (
-    generate_platform, PlatformError, BoardPackageNotFoundError,
+    PlatformError, BoardPackageNotFoundError,
     BoardProfileMismatchError, BdValidationError, XsaExportError,
     WrapperExportError, ManifestError, AdapterError,
-    _resolve_board_package, _parse_gpio_address,
-    _top_bd_command,
-    EXPECTED_GPIO_ADDRESS,
+    _resolve_board_package, _top_bd_command,
+)
+from mcps.zynq_mcp.domains.platform.platform_atoms import (
+    _parse_manifest_address_map, platform_add_ps7,
 )
 
 
@@ -24,17 +33,35 @@ class TestBoardPackageResolution:
         assert exc.value.reason_code == "BOARD_PACKAGE_NOT_FOUND"
 
 
-class TestAddressMap:
-    def test_parse_gpio_address(self):
-        tcl_out = "axi_gpio_led/S_AXI   0x41200000   64K    processing_system7_0/M_AXI_GP0"
-        addr = _parse_gpio_address(tcl_out)
-        assert addr == "0x41200000"
+class TestManifestAddressMapParsing:
+    """Equivalent replacement for the removed TestAddressMap tests.
 
-    def test_parse_no_match(self):
-        assert _parse_gpio_address("no match here") is None
+    The old tests covered platform_domain._parse_gpio_address /
+    EXPECTED_GPIO_ADDRESS, which were removed together with generate_platform
+    (B11 phase 2). The surviving general address-normalization logic lives in
+    platform_atoms._parse_manifest_address_map, which canonicalizes per-master
+    get_bd_addr_segs output for the published manifest.
+    """
 
-    def test_expected_address(self):
-        assert EXPECTED_GPIO_ADDRESS == "0x41200000"
+    def test_parse_manifest_address_map_normalizes_offset(self):
+        tcl_out = ("processing_system7_0/M_AXI_GP0 my_slave_0/S_AXI/reg0 "
+                   "0x0000000040000000 64K")
+        amap = _parse_manifest_address_map(tcl_out)
+        assert amap["my_slave_0"]["base"] == "0x40000000"
+        assert amap["my_slave_0"]["range"] == "64K"
+        assert amap["my_slave_0"]["master"] == "processing_system7_0/M_AXI_GP0"
+
+    def test_parse_manifest_address_map_ignores_partial_lines(self):
+        assert _parse_manifest_address_map("only three tokens") == {}
+        assert _parse_manifest_address_map("") == {}
+        assert _parse_manifest_address_map(
+            "processing_system7_0/M_AXI_GP0") == {}
+
+    def test_parse_manifest_address_map_keeps_canonical_base(self):
+        tcl_out = ("processing_system7_0/M_AXI_GP0 my_slave_0/S_AXI/reg0 "
+                   "0x40000000 64K")
+        amap = _parse_manifest_address_map(tcl_out)
+        assert amap["my_slave_0"]["base"] == "0x40000000"
 
 
 class TestTopBdSelection:
@@ -88,15 +115,19 @@ class TestErrorTypes:
         assert e.reason_code == "ADAPTER_NOT_READY"
 
 
-class TestAdapterRequired:
+class TestAdapterFailClosed:
+    """Equivalent replacement for the removed TestAdapterRequired.
+
+    The old test called generate_platform(adapter=None) and asserted
+    AdapterError / ADAPTER_NOT_READY. The atom path fails closed the same
+    way: the first _run_tcl with a missing adapter raises AdapterError with
+    the same stable reason code.
+    """
+
     @pytest.mark.asyncio
-    async def test_no_adapter_raises(self):
+    async def test_atom_no_adapter_fails_closed(self):
         with pytest.raises(AdapterError) as exc:
-            await generate_platform(
-                project_path="/tmp/test", board_id="ALINX_AX7020_v1.0",
-                board_profile_sha256="sha256:" + "0" * 64,
-                board_package_revision="r",
-                adapter=None)
+            await platform_add_ps7(adapter=None, board_id="ALINX_AX7020_v1.0")
         assert exc.value.reason_code == "ADAPTER_NOT_READY"
 
 

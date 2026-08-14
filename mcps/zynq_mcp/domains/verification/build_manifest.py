@@ -1,13 +1,14 @@
 """build_manifest.py — Generate PL/PS Build Manifests on operation success (B01 §6).
 
 P4 gap: ``verify_consistency`` (B01 §5 Phase 4) reads the three manifests from
-disk. P1 ``platform_generate`` publishes a Platform Manifest, but P2
-(``pl_generate_bitstream``) and P3 (``ps_compile``) published nothing, so 10
-of the 12 checks were skipped. This module closes the gap: it synthesises the
-PL Build Manifest (``manifests/pl/<rev>.json``) and PS Build Manifest
-(``manifests/ps/<rev>.json``) from the session snapshot (context) plus the
-tool's result data, and publishes them through the shared immutable publisher
-(``mcps.common.artifact_schema.publish_manifest``).
+disk. The platform atom ``platform_export_manifest`` publishes the Platform
+Manifest (it replaced the B05 shortcut ``platform_generate`` in B11 phase 2),
+but P2 (``pl_generate_bitstream``) and P3 (``ps_compile``) published nothing,
+so 10 of the 12 checks were skipped. This module closes the gap: it
+synthesises the PL Build Manifest (``manifests/pl/<rev>.json``) and PS Build
+Manifest (``manifests/ps/<rev>.json``) from the session snapshot (context)
+plus the tool's result data, and publishes them through the shared immutable
+publisher (``mcps.common.artifact_schema.publish_manifest``).
 
 Design (terminal-integrity gate):
   - Called by ``CommandRunner._execute`` on tool success ONLY. Every failure

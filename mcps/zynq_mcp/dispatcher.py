@@ -108,7 +108,7 @@ _PS_TOOL_NAMES = frozenset({
     "ps_breakpoint_add", "ps_breakpoint_remove",
     "ps_read_register", "ps_write_register", "ps_stack_trace",
 })
-_DOMAIN_TOOLS = (frozenset({"pl_generate_system_top", "platform_generate"})
+_DOMAIN_TOOLS = (frozenset({"pl_generate_system_top"})
                  | _PS_TOOL_NAMES | _PL_BRIDGE_TOOL_NAMES
                  | PLATFORM_ATOM_COMMAND_TOOL_NAMES)  # B05-R2: 12 platform command atoms
 _ALL_KNOWN = _QUERY_TOOLS | _COMMAND_TOOLS | _DOMAIN_TOOLS
@@ -528,62 +528,6 @@ async def _pl_generate_local_fn(arguments, snapshot):
 _pl_generate_local_fn._contextual = True
 
 
-# B05: platform_generate — local executor using worker controller lifecycle
-def _make_platform_generate_fn(worker_controller=None):
-    """Factory: returns a _contextual async function for platform_generate.
-    Uses worker_controller.ensure_worker() to start Vivado on first call."""
-    from mcps.zynq_mcp.domains.platform.platform_domain import (
-        generate_platform, PlatformError,
-    )
-
-    async def _run(adapter, arguments, snapshot):
-        project_path = str(snapshot.get("project_path", ""))
-        board_id = str(snapshot.get("board_id", ""))
-        board_profile_sha256 = str(snapshot.get("board_profile_sha256", ""))
-        board_package_revision = str(snapshot.get("board_package_revision", ""))
-
-        try:
-            if adapter is None:
-                return {"status": "error", "error": {
-                    "code": "TOOL_ERROR", "message": "Vivado worker not available",
-                    "details": {"reason_code": "ADAPTER_NOT_READY"}}}
-
-            result = await generate_platform(
-                project_path=project_path,
-                board_id=board_id,
-                board_profile_sha256=board_profile_sha256,
-                board_package_revision=board_package_revision,
-                session_id=str(snapshot.get("session_id", "")),
-                adapter=adapter,
-            )
-            return result
-        except PlatformError as e:
-            return {"status": "error", "error": {
-                "code": "TOOL_ERROR", "message": str(e),
-                "details": {"reason_code": e.reason_code}}}
-
-    if worker_controller is None:
-        # O3 production path: CommandRunner injects the ToolProcessController
-        # backed facade after atomic admission.
-        async def _controlled(adapter, arguments, snapshot):
-            return await _run(adapter, arguments, snapshot)
-        _controlled._controlled_vivado_contextual = True
-        return _controlled
-
-    # Historical component-test compatibility path.  It is not used by the
-    # production Server once O3 is wired.
-    async def _legacy(arguments, snapshot):
-        try:
-            adapter = await worker_controller.ensure_worker()
-        except Exception as we:
-            return {"status": "error", "error": {
-                "code": "TOOL_ERROR", "message": f"Worker start failed: {we}",
-                "details": {"reason_code": "ADAPTER_NOT_READY"}}}
-        return await _run(adapter, arguments, snapshot)
-    _legacy._contextual = True
-    return _legacy
-
-
 def _make_pl_bridge_local_fn(tool_name):
     """B07: build the local executor for a PL bridge tool.
 
@@ -610,7 +554,8 @@ def _make_platform_atom_local_fn(tool_name):
     as the first positional argument (the same injection path as PL bridge
     tools). PlatformError raised by an atom is mapped to the standard
     error envelope (code TOOL_ERROR + stable reason_code) before it reaches
-    the CommandRunner — matching the platform_generate error contract.
+    the CommandRunner — the same envelope the platform domain has always
+    used.
     """
     atom_fn = PLATFORM_ATOM_MAP[tool_name]
 
@@ -698,16 +643,6 @@ async def _domain_command_runner(args, tool_name, disp):
         local_fn = _pl_generate_local_fn
         cmd_args = args
         cmd_timeout = 30.0
-    elif tool_name == "platform_generate":
-        # O3: CommandRunner injects the facade owned by the one
-        # ToolProcessController.  No legacy worker is started here.
-        local_fn = _make_platform_generate_fn()
-        cmd_args = args
-        # Now synthesizes the BD (required so write_hw_platform emits HDF);
-        # measured ~5 min, so the operation timeout must exceed that.
-        # generate_target (up to 10m) and top synthesis (up to 30m) are
-        # sequential observable phases of one operation.
-        cmd_timeout = 2700.0
     elif tool_name in _PL_BRIDGE_TOOL_NAMES:
         # B07: PL bridge tools. session_id/board_id/project_path are
         # transport keys from the ledger context — strip them before the
@@ -730,8 +665,10 @@ async def _domain_command_runner(args, tool_name, disp):
         # session transport keys — strip them, then re-inject the context keys
         # each atom actually needs (PLATFORM_ATOM_CONTEXT_ARGS is the single
         # source). The VivadoAdapter is injected by domain_runner._execute via
-        # the _pl_adapter marker. Atoms never advance the stage (next_stage
-        # resolves to None — not in _DOMAIN_NEXT_STAGE).
+        # the _pl_adapter marker. Atoms do not advance the stage except
+        # platform_export_manifest, whose next_stage resolves to PL_GENERATE
+        # from _DOMAIN_NEXT_STAGE (B11 phase 2 decision (a)); all others stay
+        # at None — not in _DOMAIN_NEXT_STAGE.
         cmd_args = dict(args)
         cmd_args.pop("session_id", None)
         cmd_args.pop("board_id", None)
@@ -1039,9 +976,9 @@ async def _wait_operation(args, disp):
     if not isinstance(op_id, str) or not op_id.strip():
         return error("operation_id required", code="INVALID_ARGUMENT").to_dict()
     wsid = disp._guard.workspace_id if hasattr(disp._guard, 'workspace_id') else None
-    # Cap raised from 300s to 900s: platform_generate now synthesizes the BD
-    # (required so write_hw_platform emits HDF into the XSA) and legitimately
-    # runs ~5 minutes; the wait bound must exceed the operation duration.
+    # Cap raised from 300s to 900s so the wait bound covers long vendor
+    # operations (BD synthesis, bitstream write, long builds) that legitimately
+    # run several minutes; the wait bound must exceed the operation duration.
     timeout_s = min(900.0, max(5.0, float(args.get("timeout_s", 30))))
 
     try:
@@ -1117,16 +1054,16 @@ async def _evaluate_observation_query(args):
     effects, always idempotent. Returns the ToolResponse-style dict produced
     by evaluate_observation.
 
-    Absent (None) markers are omitted so the domain defaults (GPIO_E2E_*)
-    apply; an explicitly invalid non-string/empty marker is still rejected
-    by evaluate_observation (fail-closed).
+    pass_marker / fail_marker are forwarded verbatim: the schema marks them
+    required (B11 phase 2 — no GPIO_E2E_* defaults any more), and a missing
+    or invalid marker is rejected by evaluate_observation as INVALID_ARGUMENT
+    (fail-closed, never a default verdict).
     """
-    kwargs = {"uart_text": args.get("uart_text")}
-    for key in ("pass_marker", "fail_marker"):
-        val = args.get(key)
-        if val is not None:
-            kwargs[key] = val
-    return await evaluate_observation(**kwargs)
+    return await evaluate_observation(
+        uart_text=args.get("uart_text"),
+        pass_marker=args.get("pass_marker"),
+        fail_marker=args.get("fail_marker"),
+    )
 
 
 _SYNC_QUERIES = {"get_capabilities": _get_capabilities, "get_session_info": _get_session_info,

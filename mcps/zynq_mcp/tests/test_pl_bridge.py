@@ -948,9 +948,11 @@ class TestRegistrationConsistency:
         for name in PL_TOOL_MAP:
             assert name in _ALL_KNOWN
 
-    def test_total_tools_is_101(self):
+    def test_total_tools_is_100(self):
         from mcps.zynq_mcp.control.capabilities import ALL_TOOLS
-        assert len(ALL_TOOLS) == 101  # 84 + B05-R2 platform atoms (14) + pl_program_fpga (1) + ps_ensure_arm_accessible (1)
+        # B11 phase 2: platform_generate removed → 100 total (9 control + 91
+        # domain); was 101 with the shortcut.
+        assert len(ALL_TOOLS) == 100
 
 
 # ── _execute bridge injection (production CommandRunner path) ─────────────

@@ -103,13 +103,18 @@ class TestSDKWithPersistedOperation:
 # === All 33 tools (9 control + 2 domain + 22 PS) ===
 class TestAllTools:
     def test_tool_count_matches_capabilities(self, zynq_env):
-        """E007: total_tools=73 after R3.1-C + B05 + B06 (33 PS/BSP) + B07 PL bridge (26) + B06 third batch (9) + B01 UART capture (3) + B01 UART diagnostics (1) + B01 Phase 4 verify_consistency (1) + B01 Phase 6 observation (1) + B05-R2 platform atoms (14) → 99. ps_ensure_arm_accessible adds 1 → 100."""
+        """E007: total_tools=100 after B11 phase 2 (platform_generate removed):
+        9 control + 91 domain. The full composition chain: R3.1-C 10 → B05
+        shortcut 11 → B06 first batch (24 PS) 35 → B06 2nd batch (11 BSP) 46 →
+        B07 PL bridge (26) 72 → B06 third batch (9) 81 → B01 capture (3) 84 →
+        B01 diagnostics (1) 85 → verify_consistency (1) 86 → observation (1)
+        87 → B05-R2 atoms (14) 101 → B11 phase 2 removes platform_generate 100."""
         params,_=zynq_env
         async def _run():
             async with stdio_client(params) as (r,w):
                 async with ClientSession(r,w) as s:
                     await s.initialize()
-                    d=await _call(s,"get_capabilities"); assert d["data"]["total_tools"]==101
+                    d=await _call(s,"get_capabilities"); assert d["data"]["total_tools"]==100
                     d=await _call(s,"get_execution_state"); assert d["data"]["instance_role"]=="primary"
                     proj=tempfile.mkdtemp()
                     d=await _call(s,"create_session",{"board_id":"ALINX_AX7020_v1.0","project_path":proj})

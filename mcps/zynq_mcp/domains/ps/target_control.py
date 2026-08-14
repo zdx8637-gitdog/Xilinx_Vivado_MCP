@@ -195,8 +195,8 @@ async def load_hardware(bridge: XsdbBridge, xsa_path: str) -> dict:
 
     ``loadhw`` tells the ARM core which PL peripherals exist in the
     address space and how to route AXI transactions. Without it,
-    Xil_Out32/In32 to PL addresses (e.g. GPIO at 0x41200000) would
-    access unmapped memory and crash the CPU.
+    Xil_Out32/In32 to PL addresses (e.g. a memory-mapped AXI peripheral)
+    would access unmapped memory and crash the CPU.
 
     Must be called AFTER ps_initialize_ps and BEFORE ps_download_elf.
     ``xsa_path`` must be the absolute path to the Platform XSA file.

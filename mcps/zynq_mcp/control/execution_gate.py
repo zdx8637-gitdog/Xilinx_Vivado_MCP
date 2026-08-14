@@ -117,7 +117,18 @@ def _gate(ledger, tool_name, arguments, session_id, board_id, project_path, op_i
 
 def _check_stage(tool_name, current, prev_op):
     t = tool_name.lower()
-    if "platform_generate" in t:
+    if "platform_export_manifest" in t:
+        # B11 phase 2 decision (a): platform_export_manifest is the terminal
+        # atom of the platform sequence and the ONLY stage-advancing platform
+        # atom (PLATFORM_DESIGN → PL_GENERATE). It must only be admitted from
+        # PLATFORM_DESIGN, otherwise a later-stage call would push the frozen
+        # stage machine forward illegally.
+        if current != "PLATFORM_DESIGN": return True
+    elif "platform_generate_wrapper" in t:
+        # Preserved gate (previously an incidental substring match of the
+        # removed shortcut name): the BD wrapper is only regenerated while the
+        # platform design is still open — before platform_export_manifest
+        # locks the manifest and advances to PL_GENERATE.
         if current != "PLATFORM_DESIGN": return True
     elif "pl_generate_system_top" in t:
         if current != "PL_GENERATE": return True  # E003: PLATFORM_DESIGN→PL_BUILD skip rejected

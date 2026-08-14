@@ -244,7 +244,9 @@ class TestPublicMCP:
                         # B01 Phase 6 observation (1) → 85 total.
                         # B05-R2 platform atoms add 14 → 99 total.
                         # ps_ensure_arm_accessible adds 1 → 100 total.
-                        assert len(names) == 101
+                        # B11 phase 2: platform_generate removed → 100 total
+                        # (9 control + 91 domain).
+                        assert len(names) == 100
                         pl_in = [n for n in names if n.startswith("pl_")]
                         # B07 registered 26 PL bridge tools on top of
                         # pl_generate_system_top. Every registered pl_* tool

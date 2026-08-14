@@ -865,7 +865,7 @@ async def pl_analyze_timing(bridge, *, clock=None, max_paths=None) -> dict:
     if isinstance(wns, (int, float)) and not isinstance(wns, bool):
         data["timing_met"] = bool(wns >= 0)
     else:
-        # Design has no user timing constraints (e.g. GPIO-only) — no
+        # Design has no user timing constraints (e.g. no clocks defined) — no
         # create_clock paths exist, so report_timing_summary produces no
         # numeric WNS/TNS row. Treat as timing-met with a note.
         data["timing_met"] = True
@@ -1108,7 +1108,7 @@ async def pl_program_fpga(bridge, *, bitstream_path) -> dict:
                     details={"reason_code": "HW_SERVER_UNREACHABLE"}).to_dict()
         # P1-C: Tcl interprets backslash escapes (e.g. ``\f`` = form feed,
         # ``\b`` = backspace) inside unquoted command words, so a Windows
-        # bitstream path like ``D:\fpga\gpio_b08.bit`` would be corrupted
+        # bitstream path like ``D:\fpga\demo.bit`` would be corrupted
         # before it ever reaches the filesystem. Normalize to forward slashes
         # before embedding the path in the `fpga -f` Tcl command.
         result = await bridge.eval(

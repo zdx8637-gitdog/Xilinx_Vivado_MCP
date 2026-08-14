@@ -171,6 +171,12 @@ def platform_write() -> str:
 
 
 def platform_generate() -> str:
+    # XSCT Vitis command template: ``platform generate`` materializes the
+    # BSP/FSBL software for an active Vitis platform (called by
+    # ps_bsp.create_bsp). KEPT by design — it is the XSCT Vitis platform
+    # generate template, only name-similar to the Vivado BD shortcut tool
+    # ``platform_generate`` removed in B11 phase 2; the two are unrelated
+    # (see docs/development/mcp/B11_platform_generate_erratum.md §残留清单 B15).
     return "platform generate"
 
 

@@ -755,9 +755,9 @@ class TestR3Runner:
         assert r["status"] == "success"
 
     def test_Xlist_tools_is_ten(self):
-        """E007: R3.1-C list_tools=10 (9 control + 1 PL domain). B05 adds platform_generate → 11. B06 adds 22 PS → 33. B06 2nd batch adds 11 BSP → 44. B07 PL bridge adds 26 → 70. B06 third batch (9 download+debug) → 79. B01 UART capture adds 3 → 82. B01 UART diagnostics adds 1 → 83. B01 Phase 4 verify_consistency adds 1 → 84. B01 Phase 6 observation adds 1 → 85. B05-R2 platform atoms add 14 → 99. ps_ensure_arm_accessible adds 1 → 100."""
+        """E007: R3.1-C list_tools=10 (9 control + 1 PL domain). B05 adds platform_generate → 11. B06 first batch adds 24 PS → 35. B06 2nd batch adds 11 BSP → 46. B07 PL bridge adds 26 → 72. B06 third batch (9 download+debug) → 81. B01 UART capture adds 3 → 84. B01 UART diagnostics adds 1 → 85. B01 Phase 4 verify_consistency adds 1 → 86. B01 Phase 6 observation adds 1 → 87. B05-R2 platform atoms add 14 → 101. B11 phase 2 removes platform_generate → 100 (9 control + 91 domain)."""
         from mcps.zynq_mcp.control.capabilities import ALL_TOOLS
-        assert len(ALL_TOOLS) == 101
+        assert len(ALL_TOOLS) == 100
 
     @pytest.mark.asyncio
     async def test_long_run_does_not_fabricate_heartbeat(self, rtg):

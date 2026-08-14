@@ -69,6 +69,14 @@
 
 **回归要求**：受影响测试 → 替代测试一一映射（§3）。
 
+**阶段②完成记录（COMPLETE，2026-08-14 18:24 +08:00，`Get-Date` 实测）**：
+
+- 结果：交付 1–5 全部执行完毕；勘误完成记录见 `docs/development/mcp/B11_platform_generate_erratum.md`（COMPLETE；原 `B11_platform_generate_erratum_draft.md` 全文并入其 §10 草案历史后删除）。
+- 阶段机决策点 (a) 定案并落实：`platform_export_manifest` 成为 `PLATFORM_DESIGN → PL_GENERATE` 的唯一推进者（`_PL_SUCCESS_STAGE` + `execution_gate._check_stage` + 原子 `_context_updates` 三处同步；stage 链属冻结契约，变更已记录于勘误 §5）。
+- 回归数字（机械实测，从项目根目录）：`--collect-only` = **1376 collected**；完整非硬件回归 = **1337 passed / 1 skipped / 38 deselected / 0 failed**（202.70s）；基线（阶段①后）1370/1332/1/37 → 阶段②后 1376/1337/1/38，**passed 与 collected 均无下降**（净增 6 测试：public +1 host_live / observation +2 / platform_atoms +3）；host_live=34、device_live=4。
+- 5 处 `==101` 计数断言全部更新为 `==100`；`evaluate_observation` 的 pass/fail marker 改为必填（缺省即 INVALID_ARGUMENT 负路径保留）；新增 stage 推进正/负路径测试 3 个（test_platform_atoms.py）。
+- 机械门禁：`.mcp.json` SHA256=`d8e397af03b5b032f21d0aa967086f0c78b33c87b76f2e9898ae0a144df7de02`（不变）；生产代码 GPIO 残留仅历史注释 + templates.py 保留项（勘误 §8 残留清单）；git 提交见交付汇报。
+
 ### 阶段③ Agent1 白盒自测
 
 **交付**：Agent1 仅用新框架 Skill + 6-LED 需求文档 + 公开 zynq_mcp 实现完整流程（Platform 原子序列 → PL 构建 → PS 软件 → 一致性 → JTAG 部署 → 观测判定），自证「Skill 零 GPIO 字样仍可完成 GPIO 考题」。
