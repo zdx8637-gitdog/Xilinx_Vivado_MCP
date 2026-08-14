@@ -1,0 +1,10 @@
+{
+  "scenario": "jtag_connect",
+  "status": "SKIP",
+  "gate": "hw_server",
+  "skip_reason": "hw_server not reachable at tcp:localhost:3121",
+  "passed": false,
+  "expected_assertion_count": 0,
+  "consumed_assertions": 0,
+  "assertions": []
+}

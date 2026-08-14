@@ -1,0 +1,256 @@
+{
+  "scenario": "success",
+  "passed": true,
+  "expected_assertion_count": 31,
+  "consumed_assertions": 31,
+  "assertions": [
+    {
+      "id": "session_created",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "create_session",
+      "msg": "ok"
+    },
+    {
+      "id": "session_id",
+      "status": "PASS",
+      "expected": "matches ^session-[0-9a-f]{32}$",
+      "actual": "session-2882be5f0bf54d6292f1f908654381ca",
+      "field": "create_session",
+      "msg": "ok"
+    },
+    {
+      "id": "initial_stage",
+      "status": "PASS",
+      "expected": "PLATFORM_DESIGN",
+      "actual": "PLATFORM_DESIGN",
+      "field": "get_execution_state",
+      "msg": "ok"
+    },
+    {
+      "id": "admission_ok",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "platform_generate",
+      "msg": "ok"
+    },
+    {
+      "id": "op_id",
+      "status": "PASS",
+      "expected": "matches ^op-[0-9a-f]{32}$",
+      "actual": "op-e7ada08bb3f5496ea45ace2c11832855",
+      "field": "platform_generate",
+      "msg": "ok"
+    },
+    {
+      "id": "terminal_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "wait_operation",
+      "msg": "ok"
+    },
+    {
+      "id": "stage_from",
+      "status": "PASS",
+      "expected": "PLATFORM_DESIGN",
+      "actual": "PLATFORM_DESIGN",
+      "field": "completion_evidence",
+      "msg": "ok"
+    },
+    {
+      "id": "stage_to",
+      "status": "PASS",
+      "expected": "PL_GENERATE",
+      "actual": "PL_GENERATE",
+      "field": "completion_evidence",
+      "msg": "ok"
+    },
+    {
+      "id": "final_stage",
+      "status": "PASS",
+      "expected": "PL_GENERATE",
+      "actual": "PL_GENERATE",
+      "field": "get_execution_state",
+      "msg": "ok"
+    },
+    {
+      "id": "final_lane",
+      "status": "PASS",
+      "expected": "IDLE",
+      "actual": "IDLE",
+      "field": "get_execution_state",
+      "msg": "ok"
+    },
+    {
+      "id": "platform_revision",
+      "status": "PASS",
+      "expected": true,
+      "actual": "sha256:017dd57bb90624186dfaace34fb05c9b394d4c2920ffe4c2afe2ebfc279a588f",
+      "field": "get_session_info",
+      "msg": "ok"
+    },
+    {
+      "id": "platform_revision_format",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "get_session_info",
+      "msg": "ok"
+    },
+    {
+      "id": "output_artifact_revision",
+      "status": "PASS",
+      "expected": true,
+      "actual": "sha256:017dd57bb90624186dfaace34fb05c9b394d4c2920ffe4c2afe2ebfc279a588f",
+      "field": "get_operation_status",
+      "msg": "ok"
+    },
+    {
+      "id": "op_rev_matches_ctx",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "cross_check",
+      "msg": "ok"
+    },
+    {
+      "id": "xsa_exists",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "artifact",
+      "msg": "ok"
+    },
+    {
+      "id": "wrapper_exists",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "artifact",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_exists",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "artifact",
+      "msg": "ok"
+    },
+    {
+      "id": "xsa_disk_matches_op",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "artifact.sha",
+      "msg": "ok"
+    },
+    {
+      "id": "wrapper_disk_matches_op",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "artifact.sha",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_disk_matches_op",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "artifact.sha",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_schema",
+      "status": "PASS",
+      "expected": "1.0",
+      "actual": "1.0",
+      "field": "manifest",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_type",
+      "status": "PASS",
+      "expected": "platform",
+      "actual": "platform",
+      "field": "manifest",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_status",
+      "status": "PASS",
+      "expected": "locked",
+      "actual": "locked",
+      "field": "manifest",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_rev_match",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "manifest",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_xsa_disk_match",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "manifest.sha",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_wrapper_disk_match",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "manifest.sha",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_rev_ctx_match",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "context",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_addr_base",
+      "status": "PASS",
+      "expected": "0x41200000",
+      "actual": "0x41200000",
+      "field": "manifest.address_map",
+      "msg": "ok"
+    },
+    {
+      "id": "manifest_addr_range",
+      "status": "PASS",
+      "expected": "64K",
+      "actual": "64K",
+      "field": "manifest.address_map",
+      "msg": "ok"
+    },
+    {
+      "id": "pl_handoff_ok",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "pl_generate_system_top",
+      "msg": "ok"
+    },
+    {
+      "id": "pl_handoff_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "wait_operation",
+      "msg": "ok"
+    }
+  ]
+}

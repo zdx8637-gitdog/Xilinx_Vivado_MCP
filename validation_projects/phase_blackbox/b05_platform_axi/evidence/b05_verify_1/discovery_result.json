@@ -1,0 +1,72 @@
+{
+  "scenario": "discovery",
+  "passed": true,
+  "expected_assertion_count": 8,
+  "consumed_assertions": 8,
+  "assertions": [
+    {
+      "id": "platform_generate_present",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "list_tools",
+      "msg": "ok"
+    },
+    {
+      "id": "domain_tool_count",
+      "status": "PASS",
+      "expected": 2,
+      "actual": 2,
+      "field": "list_tools",
+      "msg": "ok"
+    },
+    {
+      "id": "schema_type",
+      "status": "PASS",
+      "expected": "object",
+      "actual": "object",
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "schema_additional_false",
+      "status": "PASS",
+      "expected": false,
+      "actual": false,
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "schema_empty_props",
+      "status": "PASS",
+      "expected": {},
+      "actual": {},
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "total_tools",
+      "status": "PASS",
+      "expected": 11,
+      "actual": 11,
+      "field": "capabilities",
+      "msg": "ok"
+    },
+    {
+      "id": "platform_implemented",
+      "status": "PASS",
+      "expected": 1,
+      "actual": 1,
+      "field": "capabilities",
+      "msg": "ok"
+    },
+    {
+      "id": "domain_apis_implemented",
+      "status": "PASS",
+      "expected": 2,
+      "actual": 2,
+      "field": "capabilities",
+      "msg": "ok"
+    }
+  ]
+}

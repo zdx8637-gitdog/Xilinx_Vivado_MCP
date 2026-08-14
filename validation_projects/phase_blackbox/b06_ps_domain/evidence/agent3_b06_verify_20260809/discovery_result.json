@@ -1,0 +1,151 @@
+{
+  "scenario": "discovery",
+  "status": "PASS",
+  "passed": true,
+  "expected_assertion_count": 16,
+  "consumed_assertions": 16,
+  "assertions": [
+    {
+      "id": "ps_tool_count_min",
+      "status": "PASS",
+      "expected": ">= 33",
+      "actual": 46,
+      "field": "list_tools",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_implemented_min",
+      "status": "PASS",
+      "expected": ">= 33",
+      "actual": 46,
+      "field": "capabilities",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_planned",
+      "status": "PASS",
+      "expected": 19,
+      "actual": 19,
+      "field": "capabilities",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_connect_hw_server_present",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "list_tools",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_connect_hw_server_schema_type",
+      "status": "PASS",
+      "expected": "object",
+      "actual": "object",
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_connect_hw_server_required",
+      "status": "PASS",
+      "expected": [],
+      "actual": [],
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_connect_hw_server_url_type",
+      "status": "PASS",
+      "expected": "string",
+      "actual": "string",
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_list_targets_present",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "list_tools",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_list_targets_schema_empty",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_import_hardware_present",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "list_tools",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_import_hardware_required",
+      "status": "PASS",
+      "expected": [
+        "xsa_path",
+        "project_path"
+      ],
+      "actual": [
+        "xsa_path",
+        "project_path"
+      ],
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_compile_present",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "list_tools",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_compile_required",
+      "status": "PASS",
+      "expected": [
+        "app_name"
+      ],
+      "actual": [
+        "app_name"
+      ],
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_select_target_required",
+      "status": "PASS",
+      "expected": [
+        "target_id"
+      ],
+      "actual": [
+        "target_id"
+      ],
+      "field": "schema",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_download_elf_present",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "list_tools",
+      "msg": "ok"
+    },
+    {
+      "id": "total_tools_min",
+      "status": "PASS",
+      "expected": ">= 60",
+      "actual": 82,
+      "field": "capabilities",
+      "msg": "ok"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "phase": "B04 R3.1-C",
+  "fixture_type": "frozen reference",
+  "source": "mcps/zynq_mcp/tests/fixtures/b04_pl_ready/",
+  "provided_to_agent3": true,
+  "files": [
+    {
+      "relative_path": "b04_pl_ready/bd_wrapper_realistic.v",
+      "source_path": "mcps/zynq_mcp/tests/fixtures/b04_pl_ready/bd_wrapper_realistic.v",
+      "source_type": "frozen reference",
+      "sha256": "a3fe5b0b5f4b1fffa629536f1d9e792bfe03234d2eb5e98d8f7fc7635b26f418",
+      "purpose": "Vivado 2023.1 non-ANSI BD wrapper (design_1_wrapper) — input to pl_generate_system_top",
+      "provided_to_agent3": true,
+      "rewritten_by_provisioning": false,
+      "notes": "Copied as-is; SHA used in manifest bd_wrapper_sha256"
+    },
+    {
+      "relative_path": "b04_pl_ready/platform_manifest.json",
+      "source_path": "mcps/zynq_mcp/tests/fixtures/b04_pl_ready/platform_manifest.json",
+      "source_type": "frozen reference (template)",
+      "sha256": "045335f34a63ce1e605e697ea908b7f998c1c37524ff2128ac55be848c718151",
+      "purpose": "Platform Manifest template — bd_wrapper_path and bd_wrapper_sha256 are rewritten by provisioning harness",
+      "provided_to_agent3": true,
+      "rewritten_by_provisioning": true,
+      "notes": "Provisioning updates bd_wrapper_path, bd_wrapper_sha256, xsa_path, xsa_sha256, generated_at. platform_revision and board_profile_sha256 unchanged."
+    },
+    {
+      "relative_path": "b04_pl_ready/system_top_expected.v",
+      "source_path": "mcps/zynq_mcp/tests/fixtures/b04_pl_ready/system_top_expected.v",
+      "source_type": "frozen reference (golden)",
+      "sha256": "efac0a2f604345c8d308cc79c6fe521e125b67a00d610a9e22ee5cb72df229ab",
+      "purpose": "Golden expected output — Agent3 compares generated system_top.v SHA against this",
+      "provided_to_agent3": true,
+      "rewritten_by_provisioning": false,
+      "notes": "Only used as comparison target; not passed to pl_generate_system_top"
+    }
+  ],
+  "provisioning_notes": [
+    "providing harness creates hdl/bd_wrapper_realistic.v from the fixture",
+    "creates dummy platform.xsa",
+    "rewrites platform_manifest.json with correct wrapper/xsa paths and SHA values",
+    "creates execution_ledger.json with PRECONDITIONED_SESSION state"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "xsct": "D:/Xilinx/Vitis/2023.1/bin\\xsct.bat",
+  "xsdb": "D:/Xilinx/Vitis/2023.1/bin\\xsdb.bat",
+  "hw_server_bin": "D:/Xilinx/Vitis/2023.1/bin\\hw_server.bat",
+  "hw_server_reachable": false,
+  "uart_ports": [
+    "COM1",
+    "COM4",
+    "COM6"
+  ],
+  "xsa": "D:\\fpgaproject\\zynq_platforms\\xsa\\ax7020_base.xsa",
+  "source_c": "D:\\fpgaproject\\embedded_projects\\ps_led_test\\src\\main.c"
+}

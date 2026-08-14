@@ -1,0 +1,15 @@
+#-----------------------------------------------------------
+# Vivado v2023.1 (64-bit)
+# SW Build 3865809 on Sun May  7 15:05:29 MDT 2023
+# IP Build 3864474 on Sun May  7 20:36:21 MDT 2023
+# SharedData Build 3865790 on Sun May 07 13:33:03 MDT 2023
+# Start of session at: Sun Aug  2 18:47:41 2026
+# Process ID: 7116
+# Current directory: d:/fpgaproject/validation_projects/designs
+# Command line: vivado.exe -mode tcl
+# Log file: d:/fpgaproject/validation_projects/designs/vivado.log
+# Journal file: d:/fpgaproject/validation_projects/designs\vivado.jou
+# Running On: DESKTOP-AVUTG91, OS: Windows, CPU Frequency: 2496 MHz, CPU Physical cores: 6, Host memory: 16984 MB
+#-----------------------------------------------------------
+exit
+INFO: [Common 17-206] Exiting Vivado at Sun Aug  2 18:47:46 2026...

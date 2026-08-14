@@ -1,0 +1,32 @@
+{
+  "scenario": "stage_rejection",
+  "passed": false,
+  "expected_assertion_count": 3,
+  "consumed_assertions": 3,
+  "assertions": [
+    {
+      "id": "rejected",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "platform_generate",
+      "msg": "ok"
+    },
+    {
+      "id": "reason_stage",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "error.details.reason_code",
+      "msg": "got False"
+    },
+    {
+      "id": "stage_unchanged",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "get_execution_state",
+      "msg": "ok"
+    }
+  ]
+}

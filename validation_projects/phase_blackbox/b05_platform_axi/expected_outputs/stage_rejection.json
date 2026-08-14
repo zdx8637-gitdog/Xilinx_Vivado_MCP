@@ -1,0 +1,8 @@
+{
+  "scenario": "stage_rejection",
+  "assertions": [
+    {"id": "rejected", "field": "platform_generate", "expect": true},
+    {"id": "reason_stage", "field": "error.details.reason_code", "expect": true},
+    {"id": "stage_unchanged", "field": "get_execution_state", "expect": true}
+  ]
+}

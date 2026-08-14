@@ -1,0 +1,95 @@
+{
+  "scenario": "wrong_stage",
+  "assertions": [
+    {
+      "id": "session_info_success",
+      "field": "session_info.success",
+      "expect": true
+    },
+    {
+      "id": "session_info_session_id",
+      "field": "session_info.session_id",
+      "expect": "PLACEHOLDER_SID"
+    },
+    {
+      "id": "session_info_board_id",
+      "field": "session_info.board_id",
+      "expect": "ALINX_AX7020_v1.0"
+    },
+    {
+      "id": "session_info_project_path",
+      "field": "session_info.project_path",
+      "expect": "PLACEHOLDER_PROJ"
+    },
+    {
+      "id": "session_info_stage",
+      "field": "session_info.stage",
+      "expect": "PLACEHOLDER_STAGE"
+    },
+    {
+      "id": "precondition_lane",
+      "field": "execution_state.execution_lane",
+      "expect": "IDLE"
+    },
+    {
+      "id": "precondition_stage",
+      "field": "execution_state.current_stage",
+      "expect": "PLATFORM_DESIGN"
+    },
+    {
+      "id": "precondition_worker",
+      "field": "execution_state.worker_state",
+      "expect": "ABSENT"
+    },
+    {
+      "id": "precondition_worker_pid",
+      "field": "execution_state.worker_pid",
+      "expect": null
+    },
+    {
+      "id": "precondition_active_op",
+      "field": "execution_state.active_operation",
+      "expect": null
+    },
+    {
+      "id": "rejection_status",
+      "field": "admission.status",
+      "expect": "error"
+    },
+    {
+      "id": "rejection_code",
+      "field": "admission.error_code",
+      "expect": "LOCK_BUSY"
+    },
+    {
+      "id": "rejection_reason",
+      "field": "admission.reason_code",
+      "expect": "STAGE_PREREQUISITE_UNMET"
+    },
+    {
+      "id": "no_operation_id",
+      "field": "admission.has_operation_id",
+      "expect": true
+    },
+    {
+      "id": "final_lane",
+      "field": "execution_state_final.execution_lane",
+      "expect": "IDLE"
+    },
+    {
+      "id": "final_active_op",
+      "field": "execution_state_final.active_operation",
+      "expect": null
+    },
+    {
+      "id": "final_stage_unchanged",
+      "field": "execution_state_final.current_stage",
+      "expect": "PLATFORM_DESIGN"
+    },
+    {
+      "id": "ledger_unchanged",
+      "field": "ledger.sequence_unchanged",
+      "expect": true
+    }
+  ]
+}

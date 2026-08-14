@@ -1,0 +1,22 @@
+{
+  "evidence_type": "host_live",
+  "round": 5,
+  "timestamp": "2026-08-08T13:17:20.369755+00:00",
+  "vivado_version": "2023.1",
+  "vivado_path": "D:/Xilinx/Vivado/2023.1",
+  "test_file": "mcps/zynq_mcp/tests/test_b05_platform_public.py",
+  "test_count": 7,
+  "test_passed": 7,
+  "test_failed": 0,
+  "exit_code": 0,
+  "python_version": "3.12.9",
+  "modified_files_sha256": {
+    "platform_domain.py": "sha256:102264f09cb171724b0f273bdabb17b6744cab18c66057966231432d923c1ed2",
+    "artifact_schema.py": "sha256:381dac32c76b65febcd2aecffb4e2ccede0d32a4f7c7b4ca4a84f48b7cda4418",
+    "test_b05_platform_component.py": "sha256:3e05f787105123b3533f5e5f6bedfe6647475e16e2121bf47814881a6e043017",
+    "test_b05_platform_public.py": "sha256:4f34298da1098804a9b6794ae5fd6b77bfe334381aae13d4e7003111281302f7",
+    "legacy_comparison.md": "sha256:db757ddc0987ed3ccd5ed2e428fe93190e2b096475dfec571fc919681be19707",
+    "runner.py": "sha256:c0d38bd68cad57f98f75f45399afc806ad7b3d1b4e31a49dfeb55dd6e209eda7"
+  },
+  "pytest_log": "host_live_pytest.log"
+}

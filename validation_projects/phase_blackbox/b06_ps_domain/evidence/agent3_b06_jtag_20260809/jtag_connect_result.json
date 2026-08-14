@@ -1,0 +1,129 @@
+{
+  "scenario": "jtag_connect",
+  "status": "FAIL",
+  "passed": false,
+  "expected_assertion_count": 15,
+  "consumed_assertions": 15,
+  "assertions": [
+    {
+      "id": "session_created",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "create_session",
+      "msg": "ok"
+    },
+    {
+      "id": "connect_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_connect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "connect_status",
+      "status": "PASS",
+      "expected": "connected",
+      "actual": "connected",
+      "field": "ps_connect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "list_targets_succeeded",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_list_targets",
+      "msg": "got False"
+    },
+    {
+      "id": "target_count_min",
+      "status": "FAIL",
+      "expected": ">= 1",
+      "actual": 0,
+      "field": "ps_list_targets",
+      "msg": "0 < 1"
+    },
+    {
+      "id": "arm_dap_present",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_list_targets",
+      "msg": "got False"
+    },
+    {
+      "id": "select_succeeded",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_select_target",
+      "msg": "got False"
+    },
+    {
+      "id": "selected_id_matches",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_select_target",
+      "msg": "got False"
+    },
+    {
+      "id": "target_status_succeeded",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_get_target_status",
+      "msg": "got False"
+    },
+    {
+      "id": "target_state_valid",
+      "status": "FAIL",
+      "expected": "one of ['halted', 'running', 'reset', 'unknown']",
+      "actual": null,
+      "field": "ps_get_target_status",
+      "msg": "None not in ['halted', 'running', 'reset', 'unknown']"
+    },
+    {
+      "id": "device_info_succeeded",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_get_device_info",
+      "msg": "got False"
+    },
+    {
+      "id": "device_info_keys_min",
+      "status": "FAIL",
+      "expected": ">= 1",
+      "actual": 0,
+      "field": "ps_get_device_info",
+      "msg": "0 < 1"
+    },
+    {
+      "id": "disconnect_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_disconnect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "disconnect_status",
+      "status": "PASS",
+      "expected": "disconnected",
+      "actual": "disconnected",
+      "field": "ps_disconnect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "close_session_ok",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "close_session",
+      "msg": "ok"
+    }
+  ]
+}

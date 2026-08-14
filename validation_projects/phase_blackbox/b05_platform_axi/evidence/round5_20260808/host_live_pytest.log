@@ -1,0 +1,17 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\zdx86\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: D:\fpgaproject
+plugins: anyio-4.13.0, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+mcps/zynq_mcp/tests/test_b05_platform_public.py::TestToolDiscovery::test_list_tools_includes_platform_generate PASSED [ 14%]
+mcps/zynq_mcp/tests/test_b05_platform_public.py::TestToolDiscovery::test_schema_empty_object PASSED [ 28%]
+mcps/zynq_mcp/tests/test_b05_platform_public.py::TestToolDiscovery::test_public_tool_count PASSED [ 42%]
+mcps/zynq_mcp/tests/test_b05_platform_public.py::TestStageRejection::test_rejected_when_stage_is_not_platform_design PASSED [ 57%]
+mcps/zynq_mcp/tests/test_b05_platform_public.py::TestStageRejection::test_extra_property_rejected PASSED [ 71%]
+mcps/zynq_mcp/tests/test_b05_platform_public.py::TestRealVivadoSuccess::test_full_success_chain PASSED [ 85%]
+mcps/zynq_mcp/tests/test_b05_platform_public.py::TestRealVivadoSuccess::test_wrong_stage_after_pl_generate PASSED [100%]
+
+======================== 7 passed in 336.97s (0:05:36) ========================

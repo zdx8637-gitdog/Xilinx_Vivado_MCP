@@ -1,0 +1,256 @@
+{
+  "scenario": "success",
+  "passed": false,
+  "expected_assertion_count": 31,
+  "consumed_assertions": 5,
+  "assertions": [
+    {
+      "id": "session_created",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "create_session",
+      "msg": "got False"
+    },
+    {
+      "id": "session_id",
+      "status": "FAIL",
+      "expected": "matches ^session-[0-9a-f]{32}$",
+      "actual": "",
+      "field": "create_session",
+      "msg": "no match: "
+    },
+    {
+      "id": "initial_stage",
+      "status": "FAIL",
+      "expected": "PLATFORM_DESIGN",
+      "actual": "PL_BUILD",
+      "field": "get_execution_state",
+      "msg": "got 'PL_BUILD'"
+    },
+    {
+      "id": "admission_ok",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "platform_generate",
+      "msg": "got False"
+    },
+    {
+      "id": "op_id",
+      "status": "FAIL",
+      "expected": "matches ^op-[0-9a-f]{32}$",
+      "actual": "",
+      "field": "platform_generate",
+      "msg": "no match: "
+    },
+    {
+      "id": "terminal_succeeded",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "wait_operation"
+    },
+    {
+      "id": "stage_from",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "PLATFORM_DESIGN",
+      "actual": null,
+      "field": "completion_evidence"
+    },
+    {
+      "id": "stage_to",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "PL_GENERATE",
+      "actual": null,
+      "field": "completion_evidence"
+    },
+    {
+      "id": "final_stage",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "PL_GENERATE",
+      "actual": null,
+      "field": "get_execution_state"
+    },
+    {
+      "id": "final_lane",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "IDLE",
+      "actual": null,
+      "field": "get_execution_state"
+    },
+    {
+      "id": "platform_revision",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "",
+      "actual": null,
+      "field": "get_session_info"
+    },
+    {
+      "id": "platform_revision_format",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "get_session_info"
+    },
+    {
+      "id": "output_artifact_revision",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "",
+      "actual": null,
+      "field": "get_operation_status"
+    },
+    {
+      "id": "op_rev_matches_ctx",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "cross_check"
+    },
+    {
+      "id": "xsa_exists",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "artifact"
+    },
+    {
+      "id": "wrapper_exists",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "artifact"
+    },
+    {
+      "id": "manifest_exists",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "artifact"
+    },
+    {
+      "id": "xsa_disk_matches_op",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "artifact.sha"
+    },
+    {
+      "id": "wrapper_disk_matches_op",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "artifact.sha"
+    },
+    {
+      "id": "manifest_disk_matches_op",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "artifact.sha"
+    },
+    {
+      "id": "manifest_schema",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "1.0",
+      "actual": null,
+      "field": "manifest"
+    },
+    {
+      "id": "manifest_type",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "platform",
+      "actual": null,
+      "field": "manifest"
+    },
+    {
+      "id": "manifest_status",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "locked",
+      "actual": null,
+      "field": "manifest"
+    },
+    {
+      "id": "manifest_rev_match",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "manifest"
+    },
+    {
+      "id": "manifest_xsa_disk_match",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "manifest.sha"
+    },
+    {
+      "id": "manifest_wrapper_disk_match",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "manifest.sha"
+    },
+    {
+      "id": "manifest_rev_ctx_match",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "context"
+    },
+    {
+      "id": "manifest_addr_base",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "0x41200000",
+      "actual": null,
+      "field": "manifest.address_map"
+    },
+    {
+      "id": "manifest_addr_range",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": "64K",
+      "actual": null,
+      "field": "manifest.address_map"
+    },
+    {
+      "id": "pl_handoff_ok",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "pl_generate_system_top"
+    },
+    {
+      "id": "pl_handoff_succeeded",
+      "status": "FAIL",
+      "msg": "not collected",
+      "expected": true,
+      "actual": null,
+      "field": "wait_operation"
+    }
+  ]
+}

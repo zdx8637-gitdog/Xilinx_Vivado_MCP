@@ -1,0 +1,22 @@
+{
+  "run_id": "b05_review_20260808_212834",
+  "runner_version": "2.0.0",
+  "requested": [
+    "discovery",
+    "stage_rejection",
+    "success"
+  ],
+  "executed": [
+    "discovery",
+    "stage_rejection",
+    "success"
+  ],
+  "passed": [
+    "discovery"
+  ],
+  "failed": [
+    "stage_rejection",
+    "success"
+  ],
+  "overall": false
+}

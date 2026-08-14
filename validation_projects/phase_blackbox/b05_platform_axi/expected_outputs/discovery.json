@@ -1,0 +1,13 @@
+{
+  "scenario": "discovery",
+  "assertions": [
+    {"id": "platform_generate_present", "field": "list_tools", "expect": true},
+    {"id": "domain_tool_count", "field": "list_tools", "expect": 2},
+    {"id": "schema_type", "field": "schema", "expect": "object"},
+    {"id": "schema_additional_false", "field": "schema", "expect": false},
+    {"id": "schema_empty_props", "field": "schema", "expect": {}},
+    {"id": "total_tools", "field": "capabilities", "expect": 11},
+    {"id": "platform_implemented", "field": "capabilities", "expect": 1},
+    {"id": "domain_apis_implemented", "field": "capabilities", "expect": 2}
+  ]
+}

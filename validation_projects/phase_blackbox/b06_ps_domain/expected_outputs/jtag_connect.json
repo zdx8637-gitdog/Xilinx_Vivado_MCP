@@ -1,0 +1,23 @@
+{
+  "scenario": "jtag_connect",
+  "assertions": [
+    {"id": "session_created", "field": "create_session", "expect": true},
+    {"id": "connect_succeeded", "field": "ps_connect_hw_server", "expect": true},
+    {"id": "connect_status", "field": "ps_connect_hw_server", "expect": "connected"},
+    {"id": "list_targets_succeeded", "field": "ps_list_targets", "expect": true},
+    {"id": "target_count_min", "field": "ps_list_targets", "expect_min": 1},
+    {"id": "arm_dap_present", "field": "ps_list_targets", "expect": true,
+     "note": "The JTAG chain must contain an ARM Cortex-A9 DAP target."},
+    {"id": "select_succeeded", "field": "ps_select_target", "expect": true},
+    {"id": "selected_id_matches", "field": "ps_select_target", "expect": true,
+     "note": "The selected target id must match the ARM DAP id from the listing."},
+    {"id": "target_status_succeeded", "field": "ps_get_target_status", "expect": true},
+    {"id": "target_state_valid", "field": "ps_get_target_status", "expect_one_of": ["halted", "running", "reset", "unknown"]},
+    {"id": "device_info_succeeded", "field": "ps_get_device_info", "expect": true},
+    {"id": "device_info_keys_min", "field": "ps_get_device_info", "expect_min": 1,
+     "note": "Device properties must include at least one parsed key (e.g. idcode)."},
+    {"id": "disconnect_succeeded", "field": "ps_disconnect_hw_server", "expect": true},
+    {"id": "disconnect_status", "field": "ps_disconnect_hw_server", "expect": "disconnected"},
+    {"id": "close_session_ok", "field": "close_session", "expect": true}
+  ]
+}

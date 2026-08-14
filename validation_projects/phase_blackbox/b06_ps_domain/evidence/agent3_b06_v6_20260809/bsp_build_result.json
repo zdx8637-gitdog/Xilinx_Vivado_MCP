@@ -1,0 +1,209 @@
+{
+  "scenario": "bsp_build",
+  "status": "FAIL",
+  "passed": false,
+  "expected_assertion_count": 25,
+  "consumed_assertions": 25,
+  "assertions": [
+    {
+      "id": "session_created",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "create_session",
+      "msg": "ok"
+    },
+    {
+      "id": "session_id",
+      "status": "PASS",
+      "expected": "matches ^session-[0-9a-f]{32}$",
+      "actual": "session-ec4429a505664bdf8ba5d4258f3d03d1",
+      "field": "create_session",
+      "msg": "ok"
+    },
+    {
+      "id": "project_path_valid",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "create_session",
+      "msg": "ok"
+    },
+    {
+      "id": "initial_stage",
+      "status": "PASS",
+      "expected": "PLATFORM_DESIGN",
+      "actual": "PLATFORM_DESIGN",
+      "field": "get_execution_state",
+      "msg": "ok"
+    },
+    {
+      "id": "import_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_import_hardware",
+      "msg": "ok"
+    },
+    {
+      "id": "import_workspace_xsa",
+      "status": "PASS",
+      "expected": "contains ax7020_base.xsa",
+      "actual": "C:/Users/zdx86/AppData/Local/Temp/b06_agent3_0kyhln7l/bsp_workspace/ax7020_base.xsa",
+      "field": "ps_import_hardware",
+      "msg": "ok"
+    },
+    {
+      "id": "platform_created",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_create_platform",
+      "msg": "ok"
+    },
+    {
+      "id": "platform_cpu",
+      "status": "PASS",
+      "expected": "ps7_cortexa9_0",
+      "actual": "ps7_cortexa9_0",
+      "field": "ps_create_platform",
+      "msg": "ok"
+    },
+    {
+      "id": "platform_os",
+      "status": "PASS",
+      "expected": "standalone",
+      "actual": "standalone",
+      "field": "ps_create_platform",
+      "msg": "ok"
+    },
+    {
+      "id": "bsp_generated",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_create_bsp",
+      "msg": "ok"
+    },
+    {
+      "id": "app_created",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_create_app",
+      "msg": "ok"
+    },
+    {
+      "id": "app_name",
+      "status": "PASS",
+      "expected": "ps_led_test",
+      "actual": "ps_led_test",
+      "field": "ps_create_app",
+      "msg": "ok"
+    },
+    {
+      "id": "sources_added",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_add_sources",
+      "msg": "ok"
+    },
+    {
+      "id": "sources_app",
+      "status": "PASS",
+      "expected": "ps_led_test",
+      "actual": "ps_led_test",
+      "field": "ps_add_sources",
+      "msg": "ok"
+    },
+    {
+      "id": "options_configured",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_set_compiler_options",
+      "msg": "ok"
+    },
+    {
+      "id": "compile_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_compile",
+      "msg": "ok"
+    },
+    {
+      "id": "build_status_count_min",
+      "status": "PASS",
+      "expected": ">= 1",
+      "actual": 1,
+      "field": "ps_get_build_status",
+      "msg": "ok"
+    },
+    {
+      "id": "app_built",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_get_build_status",
+      "msg": "got False"
+    },
+    {
+      "id": "elf_path_present",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_get_build_status",
+      "msg": "got False"
+    },
+    {
+      "id": "elf_exists",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "artifact",
+      "msg": "got False"
+    },
+    {
+      "id": "elf_magic_valid",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_read_elf_info",
+      "msg": "got False"
+    },
+    {
+      "id": "elf_class",
+      "status": "FAIL",
+      "expected": "ELFCLASS32",
+      "actual": null,
+      "field": "ps_read_elf_info",
+      "msg": "got None"
+    },
+    {
+      "id": "elf_machine",
+      "status": "FAIL",
+      "expected": 40,
+      "actual": null,
+      "field": "ps_read_elf_info",
+      "msg": "got None"
+    },
+    {
+      "id": "close_session_ok",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "close_session",
+      "msg": "ok"
+    },
+    {
+      "id": "final_lane",
+      "status": "PASS",
+      "expected": "IDLE",
+      "actual": "IDLE",
+      "field": "get_execution_state",
+      "msg": "ok"
+    }
+  ]
+}

@@ -1,0 +1,171 @@
+{
+  "scenario": "capabilities",
+  "assertions": [
+    {
+      "id": "session_info_success",
+      "field": "session_info.success",
+      "expect": true
+    },
+    {
+      "id": "session_info_session_id",
+      "field": "session_info.session_id",
+      "expect": "PLACEHOLDER_SID"
+    },
+    {
+      "id": "session_info_board_id",
+      "field": "session_info.board_id",
+      "expect": "ALINX_AX7020_v1.0"
+    },
+    {
+      "id": "session_info_project_path",
+      "field": "session_info.project_path",
+      "expect": "PLACEHOLDER_PROJ"
+    },
+    {
+      "id": "session_info_stage",
+      "field": "session_info.stage",
+      "expect": "PLACEHOLDER_STAGE"
+    },
+    {
+      "id": "precondition_lane",
+      "field": "execution_state.execution_lane",
+      "expect": "IDLE"
+    },
+    {
+      "id": "precondition_stage",
+      "field": "execution_state.current_stage",
+      "expect": "PL_GENERATE"
+    },
+    {
+      "id": "precondition_worker",
+      "field": "execution_state.worker_state",
+      "expect": "ABSENT"
+    },
+    {
+      "id": "precondition_worker_pid",
+      "field": "execution_state.worker_pid",
+      "expect": null
+    },
+    {
+      "id": "precondition_active_op",
+      "field": "execution_state.active_operation",
+      "expect": null
+    },
+    {
+      "id": "list_tools_count",
+      "field": "list_tools.length",
+      "expect": 10
+    },
+    {
+      "id": "pl_tools_only_one",
+      "field": "pl_tool_names",
+      "expect": [
+        "pl_generate_system_top"
+      ]
+    },
+    {
+      "id": "get_capabilities_total_tools",
+      "field": "get_capabilities.total_tools",
+      "expect": 10
+    },
+    {
+      "id": "get_capabilities_control_apis",
+      "field": "get_capabilities.control_apis",
+      "expect": 9
+    },
+    {
+      "id": "get_capabilities_domain_apis_implemented",
+      "field": "get_capabilities.domain_apis_implemented",
+      "expect": 1
+    },
+    {
+      "id": "schema_type",
+      "field": "schema.type",
+      "expect": "object"
+    },
+    {
+      "id": "schema_additional_false",
+      "field": "schema.additionalProperties",
+      "expect": false
+    },
+    {
+      "id": "schema_props_keys",
+      "field": "schema.properties.keys",
+      "expect": [
+        "wrapper_path"
+      ]
+    },
+    {
+      "id": "wrapper_path_type",
+      "field": "schema.properties.wrapper_path.type",
+      "expect": "string"
+    },
+    {
+      "id": "wrapper_path_minLength",
+      "field": "schema.properties.wrapper_path.minLength",
+      "expect": 1
+    },
+    {
+      "id": "schema_required",
+      "field": "schema.required",
+      "expect": [
+        "wrapper_path"
+      ]
+    },
+    {
+      "id": "pl_pl_create_project_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_create_project"
+    },
+    {
+      "id": "pl_pl_set_top_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_set_top"
+    },
+    {
+      "id": "pl_pl_synthesize_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_synthesize"
+    },
+    {
+      "id": "pl_pl_place_and_route_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_place_and_route"
+    },
+    {
+      "id": "pl_pl_analyze_timing_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_analyze_timing"
+    },
+    {
+      "id": "pl_pl_generate_bitstream_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_generate_bitstream"
+    },
+    {
+      "id": "pl_pl_connect_hw_server_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_connect_hw_server"
+    },
+    {
+      "id": "pl_pl_open_hw_target_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_open_hw_target"
+    },
+    {
+      "id": "pl_pl_select_device_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_select_device"
+    },
+    {
+      "id": "pl_pl_program_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_program"
+    },
+    {
+      "id": "pl_pl_get_device_status_absent",
+      "field": "tool_names",
+      "expect_not_contains": "pl_get_device_status"
+    }
+  ]
+}

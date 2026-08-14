@@ -1,0 +1,28 @@
+{
+  "scenario": "jtag_deploy",
+  "assertions": [
+    {"id": "session_created", "field": "create_session", "expect": true},
+    {"id": "connect_succeeded", "field": "ps_connect_hw_server", "expect": true},
+    {"id": "arm_dap_selected", "field": "ps_select_target", "expect": true,
+     "note": "The ARM Cortex-A9 DAP target is selected for deployment."},
+    {"id": "device_info_succeeded", "field": "ps_get_device_info", "expect": true},
+    {"id": "device_info_keys_min", "field": "ps_get_device_info", "expect_min": 1},
+    {"id": "target_status_succeeded", "field": "ps_get_target_status", "expect": true},
+    {"id": "target_state_valid", "field": "ps_get_target_status", "expect_one_of": ["halted", "running", "reset", "unknown"]},
+    {"id": "ps_initialize_succeeded", "field": "ps_initialize_ps", "expect_one_of": [true, false],
+     "note": "ps7_init requires a sourced .tcl from the XSA. Accepts false when the board is pre-initialised."},
+    {"id": "ps_initialize_status", "field": "ps_initialize_ps", "expect_one_of": ["initialized", null]},
+    {"id": "halt_succeeded", "field": "ps_halt_target", "expect": true},
+    {"id": "halt_state", "field": "ps_halt_target", "expect": "halted"},
+    {"id": "reg_read_pc_succeeded", "field": "ps_reg_read", "expect": true},
+    {"id": "pc_value_hex", "field": "ps_reg_read", "expect_pattern": "^0[xX][0-9a-fA-F]+$",
+     "note": "PC register reads back as a hex value."},
+    {"id": "run_succeeded", "field": "ps_run_target", "expect": true},
+    {"id": "run_state", "field": "ps_run_target", "expect": "running",
+     "note": "ps_run_target confirms the target reached running state."},
+    {"id": "disconnect_succeeded", "field": "ps_disconnect_hw_server", "expect": true},
+    {"id": "close_session_ok", "field": "close_session", "expect": true},
+    {"id": "download_subflow", "field": "jtag_deploy", "expect_one_of": ["EXECUTED_OK", "SKIPPED_NO_ELF"],
+     "note": "ps_download_elf is registered; the sub-flow downloads the bsp_build ELF, runs it, and asserts the UART marker. SKIPPED_NO_ELF is accepted only when no ELF was produced (bsp_build skipped). Download/run/uart failures FAIL."}
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "scenario": "discovery",
+  "assertions": [
+    {"id": "ps_tool_count_min", "field": "list_tools", "expect_min": 33,
+     "note": "At least 33 ps_* tools must be registered. Currently 42 (22 JTAG + 11 BSP + 9 download/debug/write)."},
+    {"id": "ps_implemented_min", "field": "capabilities", "expect_min": 33,
+     "note": "capabilities.domains.ps.implemented must be >= 33. Currently 42."},
+    {"id": "ps_planned", "field": "capabilities", "expect": 19,
+     "note": "capabilities.domains.ps.planned = 19 (architecture PS domain target)."},
+    {"id": "ps_connect_hw_server_present", "field": "list_tools", "expect": true},
+    {"id": "ps_connect_hw_server_schema_type", "field": "schema", "expect": "object"},
+    {"id": "ps_connect_hw_server_required", "field": "schema", "expect": [],
+     "note": "url is optional (defaults to localhost:3121)."},
+    {"id": "ps_connect_hw_server_url_type", "field": "schema", "expect": "string"},
+    {"id": "ps_list_targets_present", "field": "list_tools", "expect": true},
+    {"id": "ps_list_targets_schema_empty", "field": "schema", "expect": true,
+     "note": "ps_list_targets input schema is {}."},
+    {"id": "ps_import_hardware_present", "field": "list_tools", "expect": true},
+    {"id": "ps_import_hardware_required", "field": "schema", "expect": ["xsa_path", "project_path"]},
+    {"id": "ps_compile_present", "field": "list_tools", "expect": true},
+    {"id": "ps_compile_required", "field": "schema", "expect": ["app_name"]},
+    {"id": "ps_select_target_required", "field": "schema", "expect": ["target_id"]},
+    {"id": "ps_download_elf_present", "field": "list_tools", "expect": true,
+     "note": "ps_download_elf (JTAG ELF download) is registered; the jtag_deploy download/run/UART sub-flow is live."},
+    {"id": "total_tools_min", "field": "capabilities", "expect_min": 60,
+     "note": "Sanity floor on the total registered tool count (currently 86)."}
+  ]
+}

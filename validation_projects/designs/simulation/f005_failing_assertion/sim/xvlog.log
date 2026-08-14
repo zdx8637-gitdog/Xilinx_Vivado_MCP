@@ -1,0 +1,8 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/fpgaproject/validation_projects/designs/simulation/f005_failing_assertion/rtl/breath_led.v" into library work
+INFO: [VRFC 10-311] analyzing module breath_led
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/fpgaproject/validation_projects/designs/simulation/f005_failing_assertion/rtl/top.v" into library work
+INFO: [VRFC 10-311] analyzing module top
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/fpgaproject/validation_projects/designs/simulation/f005_failing_assertion/rtl/uart_tx.v" into library work
+INFO: [VRFC 10-311] analyzing module uart_tx
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/fpgaproject/validation_projects/designs/simulation/f005_failing_assertion/sim/tb_breath_led.v" into library work
+INFO: [VRFC 10-311] analyzing module tb_breath_led

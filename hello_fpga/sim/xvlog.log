@@ -1,0 +1,4 @@
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/fpgaproject/hello_fpga/rtl/breath_led.v" into library work
+INFO: [VRFC 10-311] analyzing module breath_led
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "D:/fpgaproject/hello_fpga/sim/tb_breath_led.v" into library work
+INFO: [VRFC 10-311] analyzing module tb_breath_led

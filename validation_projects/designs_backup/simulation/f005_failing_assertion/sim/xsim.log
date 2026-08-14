@@ -1,0 +1,96 @@
+#-----------------------------------------------------------
+# xsim v2023.1 (64-bit)
+# SW Build 3865809 on Sun May  7 15:05:29 MDT 2023
+# IP Build 3864474 on Sun May  7 20:36:21 MDT 2023
+# SharedData Build 3865790 on Sun May 07 13:33:03 MDT 2023
+# Start of session at: Sun Aug  2 10:09:52 2026
+# Process ID: 14736
+# Current directory: D:/fpgaproject/validation_projects/designs/simulation/f005_failing_assertion/sim
+# Command line: xsim.exe -mode tcl -source {xsim.dir/tb_breath_led_snap/xsim_script.tcl}
+# Log file: D:/fpgaproject/validation_projects/designs/simulation/f005_failing_assertion/sim/xsim.log
+# Journal file: D:/fpgaproject/validation_projects/designs/simulation/f005_failing_assertion/sim\xsim.jou
+# Running On: DESKTOP-AVUTG91, OS: Windows, CPU Frequency: 2496 MHz, CPU Physical cores: 6, Host memory: 16984 MB
+#-----------------------------------------------------------
+source xsim.dir/tb_breath_led_snap/xsim_script.tcl
+# xsim {tb_breath_led_snap} -autoloadwcfg -runall
+Time resolution is 1 ps
+run -all
+============================================
+ TEST 1: Reset Behavior
+============================================
+  After reset: led=1111  duty_out=0x10000000
+  PASS: LEDs off (4'b1111) after reset
+
+============================================
+ TEST 2: FSM enters RAMP_UP after reset release
+============================================
+  duty_out = 0x10000000 (should be >= DUTY_MIN)
+  FAIL: duty at valid level after reset release
+
+============================================
+ TEST 3: PWM Output Toggling
+============================================
+  PWM toggles in 1ms (50000 cycles): 91
+  PASS: PWM output is toggling
+
+============================================
+ TEST 4: Breathing Duty Sweep
+============================================
+  DIRECTION CHANGE at t=1000330000: RAMP_UP → RAMP_DOWN  duty=0x1a000000
+  DIRECTION CHANGE at t=1002530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1005530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1008530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1011530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1014530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1017530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1020530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1023530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1026530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1029530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1032530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1035530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1038530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1041530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1044530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1047530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1050530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1053530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1056530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1059530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1062530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1065530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1068530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1071530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1074530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1077530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1080530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1083530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1086530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1089530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1092530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  DIRECTION CHANGE at t=1095530000: RAMP_UP → RAMP_DOWN  duty=0x1e000000
+  DIRECTION CHANGE at t=1098530000: RAMP_DOWN → RAMP_UP  duty=0x12000000
+  Duty ramp steps observed: 467
+  Direction changes: 34 (expected >= 2)
+  PASS: Breathing cycle confirmed (up→down→up)
+
+============================================
+ TEST 5: LED Active-Low Property
+============================================
+  LED low (ON)  count: 0
+  LED high (OFF) count: 100000
+  FAIL: LED stuck at one level
+
+============================================
+ TEST 6: PWM Period Measurement
+============================================
+  Avg PWM period: 35836000 ns (~27904 Hz)
+  WARN: unexpected period
+
+============================================
+ ALL TESTS COMPLETE
+============================================
+ Check tb_breath_led.vcd for waveform details
+$finish called at time : 5358770 ns : File "D:/fpgaproject/validation_projects/designs/simulation/f005_failing_assertion/sim/tb_breath_led.v" Line 226
+exit
+INFO: [Common 17-206] Exiting xsim at Sun Aug  2 10:09:59 2026...

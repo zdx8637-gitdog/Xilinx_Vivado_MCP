@@ -1,0 +1,153 @@
+{
+  "scenario": "jtag_deploy",
+  "status": "FAIL",
+  "passed": false,
+  "expected_assertion_count": 18,
+  "consumed_assertions": 18,
+  "assertions": [
+    {
+      "id": "session_created",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "create_session",
+      "msg": "ok"
+    },
+    {
+      "id": "connect_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_connect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "arm_dap_selected",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_select_target",
+      "msg": "ok"
+    },
+    {
+      "id": "device_info_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_get_device_info",
+      "msg": "ok"
+    },
+    {
+      "id": "device_info_keys_min",
+      "status": "PASS",
+      "expected": ">= 1",
+      "actual": 28,
+      "field": "ps_get_device_info",
+      "msg": "ok"
+    },
+    {
+      "id": "target_status_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_get_target_status",
+      "msg": "ok"
+    },
+    {
+      "id": "target_state_valid",
+      "status": "PASS",
+      "expected": "one of ['halted', 'running', 'reset', 'unknown']",
+      "actual": "unknown",
+      "field": "ps_get_target_status",
+      "msg": "ok"
+    },
+    {
+      "id": "ps_initialize_succeeded",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_initialize_ps",
+      "msg": "got False"
+    },
+    {
+      "id": "ps_initialize_status",
+      "status": "FAIL",
+      "expected": "initialized",
+      "actual": null,
+      "field": "ps_initialize_ps",
+      "msg": "got None"
+    },
+    {
+      "id": "halt_succeeded",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_halt_target",
+      "msg": "got False"
+    },
+    {
+      "id": "halt_state",
+      "status": "FAIL",
+      "expected": "halted",
+      "actual": null,
+      "field": "ps_halt_target",
+      "msg": "got None"
+    },
+    {
+      "id": "reg_read_pc_succeeded",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_reg_read",
+      "msg": "got False"
+    },
+    {
+      "id": "pc_value_hex",
+      "status": "FAIL",
+      "expected": "matches ^0[xX][0-9a-fA-F]+$",
+      "actual": null,
+      "field": "ps_reg_read",
+      "msg": "no match: None"
+    },
+    {
+      "id": "run_succeeded",
+      "status": "FAIL",
+      "expected": true,
+      "actual": false,
+      "field": "ps_run_target",
+      "msg": "got False"
+    },
+    {
+      "id": "run_state",
+      "status": "FAIL",
+      "expected": "running",
+      "actual": null,
+      "field": "ps_run_target",
+      "msg": "got None"
+    },
+    {
+      "id": "disconnect_succeeded",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_disconnect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "close_session_ok",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "close_session",
+      "msg": "ok"
+    },
+    {
+      "id": "download_subflow",
+      "status": "PASS",
+      "expected": "one of ['EXECUTED_OK', 'SKIPPED_NO_ELF']",
+      "actual": "SKIPPED_NO_ELF",
+      "field": "jtag_deploy",
+      "msg": "ok"
+    }
+  ]
+}

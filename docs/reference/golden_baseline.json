@@ -1,0 +1,29 @@
+{
+  "project": "hello_fpga",
+  "description": "Golden baseline for FPGA Agent — 32-bit counter on ALINX AX7020",
+  "baseline_date": "2026-07-31",
+  "vivado_version": "2023.1",
+  "vitis_version": "2023.1",
+  "part": "xc7z020clg400-2",
+  "board": "ALINX AX7020",
+  "clock": {
+    "name": "sys_clk",
+    "pin": "U18",
+    "frequency_mhz": 50,
+    "period_ns": 20.0
+  },
+  "timing": {
+    "wns_ns": 17.954,
+    "tns_ns": 0.0,
+    "whs_ns": 0.043,
+    "ths_ns": 0.0
+  },
+  "resources": {
+    "lut": 2,
+    "ff": 28,
+    "bram": 0,
+    "dsp": 0,
+    "bufg": 1,
+    "io": 6
+  }
+}

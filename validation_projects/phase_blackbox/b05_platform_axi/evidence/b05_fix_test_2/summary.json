@@ -1,0 +1,21 @@
+{
+  "run_id": "b05_fix_test_2",
+  "runner_version": "2.0.0",
+  "requested": [
+    "discovery",
+    "stage_rejection",
+    "success"
+  ],
+  "executed": [
+    "discovery",
+    "stage_rejection",
+    "success"
+  ],
+  "passed": [
+    "discovery",
+    "stage_rejection",
+    "success"
+  ],
+  "failed": [],
+  "overall": true
+}

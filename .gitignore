@@ -1,0 +1,42 @@
+# Vivado/Xilinx 工具生成物（可再生成）
+.Xil/
+*.jou
+vivado_*.backup.*
+vivado_project/*.cache/
+vivado_project/*.hw/
+xsim.dir/
+*.vcd
+*.wdb
+*.pb
+xsim_*.backup.*
+
+# Python
+__pycache__/
+*.pyc
+
+# 测试缓存
+.pytest_cache/
+
+# legacy 子仓库（保留在磁盘，各有独立 Git 历史，不被本仓库跟踪）
+Xilinx_Vivado_MCP/
+Xilinx_Vitis_MCP/
+zynq_platforms/
+
+# 运行态与证据目录（不入库）
+.zynq_runtime/
+.o6_runtime*/
+workspaces/
+tmp/
+NA/
+
+# 工具日志
+/vivado.log
+/vivado_*.log
+
+# 机器本地配置
+.claude/settings.local.json
+
+# 临时与操作系统
+_trash/
+Thumbs.db
+Desktop.ini

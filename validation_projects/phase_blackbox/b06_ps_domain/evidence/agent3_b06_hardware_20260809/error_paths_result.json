@@ -1,0 +1,169 @@
+{
+  "scenario": "error_paths",
+  "status": "PASS",
+  "passed": true,
+  "expected_assertion_count": 20,
+  "consumed_assertions": 20,
+  "assertions": [
+    {
+      "id": "no_session_error",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_connect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "no_session_code",
+      "status": "PASS",
+      "expected": "LOCK_BUSY",
+      "actual": "LOCK_BUSY",
+      "field": "error.code",
+      "msg": "ok"
+    },
+    {
+      "id": "no_session_reason",
+      "status": "PASS",
+      "expected": "NO_ACTIVE_SESSION",
+      "actual": "NO_ACTIVE_SESSION",
+      "field": "error.details.reason_code",
+      "msg": "ok"
+    },
+    {
+      "id": "session_created",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "create_session",
+      "msg": "ok"
+    },
+    {
+      "id": "empty_sid_error",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_connect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "empty_sid_code",
+      "status": "PASS",
+      "expected": "INVALID_ARGUMENT",
+      "actual": "INVALID_ARGUMENT",
+      "field": "error.code",
+      "msg": "ok"
+    },
+    {
+      "id": "empty_sid_reason",
+      "status": "PASS",
+      "expected": "SESSION_ID_REQUIRED",
+      "actual": "SESSION_ID_REQUIRED",
+      "field": "error.details.reason_code",
+      "msg": "ok"
+    },
+    {
+      "id": "nonstr_sid_error",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_connect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "nonstr_sid_reason",
+      "status": "PASS",
+      "expected": "SESSION_ID_REQUIRED",
+      "actual": "SESSION_ID_REQUIRED",
+      "field": "error.details.reason_code",
+      "msg": "ok"
+    },
+    {
+      "id": "mismatch_sid_error",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_connect_hw_server",
+      "msg": "ok"
+    },
+    {
+      "id": "mismatch_sid_reason",
+      "status": "PASS",
+      "expected": "SESSION_ID_MISMATCH",
+      "actual": "SESSION_ID_MISMATCH",
+      "field": "error.details.reason_code",
+      "msg": "ok"
+    },
+    {
+      "id": "schema_rejected",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_select_target",
+      "msg": "ok"
+    },
+    {
+      "id": "schema_rejected_message",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_select_target",
+      "msg": "ok"
+    },
+    {
+      "id": "wrong_stage_error",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "pl_generate_system_top",
+      "msg": "ok"
+    },
+    {
+      "id": "wrong_stage_code",
+      "status": "PASS",
+      "expected": "LOCK_BUSY",
+      "actual": "LOCK_BUSY",
+      "field": "error.code",
+      "msg": "ok"
+    },
+    {
+      "id": "wrong_stage_reason",
+      "status": "PASS",
+      "expected": "STAGE_PREREQUISITE_UNMET",
+      "actual": "STAGE_PREREQUISITE_UNMET",
+      "field": "error.details.reason_code",
+      "msg": "ok"
+    },
+    {
+      "id": "invalid_xsa_error",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "ps_import_hardware",
+      "msg": "ok"
+    },
+    {
+      "id": "invalid_xsa_reason",
+      "status": "PASS",
+      "expected": "one of ['XSA_NOT_FOUND', 'BRIDGE_NOT_READY']",
+      "actual": "BRIDGE_NOT_READY",
+      "field": "ps_import_hardware",
+      "msg": "ok"
+    },
+    {
+      "id": "channel_clean",
+      "status": "PASS",
+      "expected": "IDLE",
+      "actual": "IDLE",
+      "field": "get_execution_state",
+      "msg": "ok"
+    },
+    {
+      "id": "close_session_ok",
+      "status": "PASS",
+      "expected": true,
+      "actual": true,
+      "field": "close_session",
+      "msg": "ok"
+    }
+  ]
+}

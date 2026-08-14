@@ -1,0 +1,43 @@
+{
+    "board_id": "TEST_AX7020_MINIMAL",
+    "part": "xc7z020clg400-2",
+    "vivado_part": "xc7z020clg400-2",
+    "ddr_physical": "1 GB (2x 4Gbit)",
+    "ddr_configured": "512 MB",
+    "ps7_preset": {
+        "PCW_UART1_PERIPHERAL_ENABLE": 1,
+        "PCW_UART1_UART1_IO": "MIO 48 .. 49",
+        "PCW_UART1_BAUD_RATE": 115200,
+        "PCW_EN_CLK0_PORT": 1,
+        "PCW_FPGA0_PERIPHERAL_FREQMHZ": 50,
+        "PCW_USE_M_AXI_GP0": 1,
+        "PCW_USE_S_AXI_HP0": 1,
+        "PCW_USE_FABRIC_INTERRUPT": 1,
+        "PCW_IRQ_F2P_INTR": 1,
+        "PCW_DDR_RAM_HIGHADDR": "0x1FFFFFFF"
+    },
+    "ps7_preset_sha256": "TEST_ONLY_NOT_REAL",
+    "uart": {
+        "port": "UART1",
+        "mio": "48..49",
+        "initial_baud": 115200
+    },
+    "pl_leds": {
+        "count": 4,
+        "polarity": "active-low"
+    },
+    "pl_buttons": {
+        "count": 4,
+        "polarity": "active-high"
+    },
+    "pl_resources": {
+        "luts": 53200,
+        "ffs": 106400,
+        "bram36": 140,
+        "dsp48": 220
+    },
+    "ps_clock_mhz": 33.333,
+    "pl_oscillator_mhz": 50,
+    "fixture_only": true,
+    "source": "synthetic-test-fixture"
+}

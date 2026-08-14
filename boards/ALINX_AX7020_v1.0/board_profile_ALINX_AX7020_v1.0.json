@@ -1,0 +1,100 @@
+{
+    "board_id": "ALINX_AX7020_v1.0",
+    "vendor": "ALINX",
+    "model": "AX7020",
+    "part": "xc7z020clg400-2",
+    "vivado_part": "xc7z020clg400-2",
+    "fixture_only": false,
+
+    "ddr_chip": "MT41J256M16 RE-125",
+    "ddr_chip_count": 2,
+    "ddr_physical_bytes": 1073741824,
+    "ddr_configured_bytes": 536870912,
+    "ddr_configured_highaddr": 536870911,
+    "ddr_frequency_hz": 533333333,
+    "ddr_bus_width_bits": 32,
+
+    "qspi_chip": "W25Q256",
+    "qspi_physical_bytes": 33554432,
+    "qspi_linear_window_bytes": 16777216,
+    "qspi_base_address": 4227858432,
+    "qspi_data_mode": "x4",
+
+    "pl_leds": {
+        "count": 4,
+        "pins": ["J16", "K16", "M15", "M14"],
+        "polarity": "active-low"
+    },
+
+    "ps_leds": {
+        "count": 2,
+        "mio_pins": [0, 13],
+        "polarity": "active-low"
+    },
+
+    "pl_oscillator_hz": 50000000,
+    "pl_oscillator_pin": "U18",
+    "ps_clock_hz": 33333333,
+
+    "uart": {
+        "controller": "UART1",
+        "mio_pins": [48, 49],
+        "default_baud": 115200
+    },
+
+    "usb_bridge": {
+        "chip": "CP2102-GM",
+        "family": "CP210x",
+        "vid": "0x10C4",
+        "pid": "0xEA60"
+    },
+
+    "pl_resources": {
+        "luts": 53200,
+        "ffs": 106400,
+        "bram36": 140,
+        "dsp48": 220
+    },
+
+    "ps7_preset_sha256": "sha256:142221866c21ea74b7d5040e3c7cae5bdc166498cd9daffe994648ca737b3299",
+    "xdc_sha256": "sha256:055a3aaaaaf26a8be37aabd07710b4d4bab9d9b1aacc49d6438461723acaece2",
+
+    "source_catalog": [
+        {
+            "source_id": "ALINX_AX7020_2023_1_PS_CONFIG",
+            "distribution_path": "course_s2_vitis/08_ps_uart/Vivado/auto_create_project/ps_config.tcl",
+            "sha256": "sha256:142221866c21ea74b7d5040e3c7cae5bdc166498cd9daffe994648ca737b3299",
+            "role": "authoritative_ps7_preset"
+        },
+        {
+            "source_id": "ALINX_AX7020_SCHEMATIC_V2.0",
+            "distribution_path": "hardware/01_SCH/AX7020开发板原理图V2.0.pdf",
+            "sha256": "sha256:e35eb1b654774a6f314de0140f5608d38a1c6be72d1c3e1008f5e288ac83c87e",
+            "role": "authoritative_schematic"
+        },
+        {
+            "source_id": "ALINX_AX7020_PS_MIO_EXAMPLE_C",
+            "distribution_path": "course_s2_vitis/03_ps_mio/Vitis/auto_create_vitis/src/ps_led/helloworld.c",
+            "sha256": "sha256:90f4a2b0636f79c766a651352166f4c923314d07a508c00bd65e9786c139dd80",
+            "role": "ps_led_cross_check"
+        },
+        {
+            "source_id": "ALINX_AX7020_README_CN",
+            "distribution_path": "README_CN.md",
+            "sha256": "sha256:0b16aa3f541cf3a963931a559e6c88555ff6c0e63c5ea31a55b4bd0df188459d",
+            "role": "board_specifications_reference"
+        },
+        {
+            "source_id": "ALINX_AX7020_FPGA_TUTORIAL_S1",
+            "distribution_path": "cource_s1_ALINX_ZYNQ(AX7020)2023开发平台FPGA教程V1.01.pdf",
+            "sha256": "sha256:561d1b36ba7d83147868093c4ab21c1d1d52b41a7747b3a777de6fac584162f4",
+            "role": "fpga_development_reference"
+        },
+        {
+            "source_id": "ALINX_AX7020_VITIS_TUTORIAL_S2",
+            "distribution_path": "course_s2_ALINX_ZYNQ(AX7010_AX7020)2023开发平台Vitis应用教程V1.01.pdf",
+            "sha256": "sha256:47d221e66649e03d30e441cd30f12e2b1e21d0274e46fc85e61d618d797d0b13",
+            "role": "vitis_development_reference"
+        }
+    ]
+}
