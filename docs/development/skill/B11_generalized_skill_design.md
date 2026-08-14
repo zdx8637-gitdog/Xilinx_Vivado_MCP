@@ -1,13 +1,13 @@
 # B11 泛化 Skill 决策框架设计（DRAFT）
 
-> 日期：2026-08-14（`Get-Date` 实测 2026-08-14 16:26 +08:00）
+> 日期：2026-08-14（`Get-Date` 实测 2026-08-14 17:19 +08:00，首次成稿 16:26）
 > 状态：**DRAFT — 待用户审核。本文档是设计提案，不代表切片已立项、不冻结任何资产、不修改任何生产代码 / 测试 / skills / boards。**
-> 性质：为「下一 Brick（数据采集切片）」立项决策提供 Skill 层面的泛化设计。配套提案见 `docs/development/mcp/B11_data_acquisition_proposal.md`（两份文档交叉引用）。
+> 定位更新（2026-08-14，用户方向重定后）：B11 的目标已从「数据采集切片」重定为「泛化框架黑盒验证」（见 `docs/development/mcp/B11_plan.md`）。本文档**保留**，作为 **B11 阶段①（泛化 Skill 重写）的设计基础**：阶段①把本文 §3 的 9 阶段框架落地为通用 Skill（零 GPIO 字样），把 §2.2 的「可泛化资产」固化为骨架，把 §5 的领域知识包作为扩展机制。原配套提案 `docs/development/mcp/B11_data_acquisition_proposal.md` 已改述为「验证实例候选：数据采集（非当前立项对象）」。
 > 对照基线：`skills/zynq_gpio/`（B07 冻结，SHA256 见 `docs/development/mcp/B10_freeze_manifest.md` §3）；顶层架构 `docs/architecture_ai_zynq7020.md` v2.3.1（P1–P8）。
 
 ## 1. 背景与目的
 
-当前唯一 Skill `skills/zynq_gpio/` 是 **GPIO 纵向切片的配方**（固定外设、固定步骤、固定产物路径）。B10 冻结后，下一切片是数据采集（PL AD 采集 → DMA → DDR3 → PS 读 DDR3 → UART 上行），它包含自定义 RTL、AXI DMA、HP 口、中断、二进制流协议等 GPIO Skill 明确不支持的能力（`SKILL.md` §技能声明）。若继续按「每个切片写一份配方 Skill」扩展，Skill 将退化为项目仓库，违背其「泛化工具」定位。
+当前唯一 Skill `skills/zynq_gpio/` 是 **GPIO 纵向切片的配方**（固定外设、固定步骤、固定产物路径）。用户方向重定后，B11 的目标是证明「Skill + MCP 是面向任意 Zynq 工程开发的通用框架」：用 GPIO 项目当考题，但 Skill 里**完全不提 GPIO**（GPIO 项目只是一份递给黑盒智能体的项目需求）；未来 ADC / 视频 / HDMI / TCP 都是同类验证实例。若继续按「每个切片写一份配方 Skill」扩展，Skill 将退化为项目仓库，违背其「泛化工具」定位。
 
 本文档目的：
 1. 诊断现有 GPIO Skill 中哪些是**可泛化的工程骨架**、哪些是**必须按域扩展的领域知识**（引用 phase 文件作证据）；
@@ -15,7 +15,7 @@
 3. 明确**分工边界**：现实层（板卡物理事实）归用户，工程层（架构/协议/参数/代码）归智能体，产品级取舍由智能体提案、用户拍板；
 4. 定义 MCP 工具在该框架各阶段的角色，并把能力缺口与 `B11_data_acquisition_proposal.md` §5 的清单交叉引用。
 
-**范围**：本文档只做设计（DRAFT），不实现、不修改 `skills/zynq_gpio/`。落地为可执行 Skill 需用户审核并批准切片立项后进行。
+**范围**：本文档只做设计（DRAFT），不实现、不修改 `skills/zynq_gpio/`。落地为可执行 Skill（阶段①）需用户审核批准 B11 规划后进行（见 `B11_plan.md` 阶段①）。
 
 ## 2. 现状诊断：GPIO Skill 是「配方」，不是「框架」
 
@@ -131,9 +131,9 @@
 
 ## 7. 与现有 GPIO Skill 的关系与迁移路径
 
-- GPIO Skill（`skills/zynq_gpio/`，B07 冻结）**保持不变**：它是框架的第一个实例化配方，同时充当框架骨架的验证基准（O7 R3 黑盒 PASS）。
-- 若用户批准本框架与 B11 立项：新建领域知识包（如 `skills/zynq_gpio/` 之外的 `skills/zynq_data_acquisition/` 或按用户决定的结构），GPIO 配方作为对照样例回填，**不修改冻结资产**。
-- 本框架的「配方 vs 框架」诊断结论同时约束未来视频/HDMI 切片：每次只新增领域知识包，不再新增独立大配方。
+- GPIO Skill（`skills/zynq_gpio/`，B07 冻结）是框架的第一个实例化配方，同时充当框架骨架的验证基准（O7 R3 黑盒 PASS）。B11 阶段①将按「禁止静默搬迁」纪律归档旧 Skill（移动路径与理由见 `B11_plan.md` 阶段①，须经用户审核）。
+- 若用户批准 B11 规划：新建**通用框架 Skill**（零 GPIO 字样，命名提案见 `B11_plan.md` 阶段①），GPIO 配方归档后作为对照样例回填，**不静默修改冻结资产**。
+- 本框架的「配方 vs 框架」诊断结论同时约束未来 ADC / 视频 / HDMI / TCP 验证实例：每次只新增领域知识包，不再新增独立大配方。
 
 ## 8. DRAFT 声明
 
