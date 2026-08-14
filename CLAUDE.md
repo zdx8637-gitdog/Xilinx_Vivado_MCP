@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）FPGA 开发框架。Claude 通过 MCP Server 操作 Vivado/XSim/Vitis 等 EDA 工具，按「三域四层 + Brick」计划增量构建。
 
 - 冻结顶层架构：[docs/architecture_ai_zynq7020.md](docs/architecture_ai_zynq7020.md) v2.3.1
-- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10 等待用户决策：确认 GPIO v1 基线 + 选下一切片）
-- Execution Observation：O1–O6 FROZEN，O7 R3 PASS，O8 未启动
+- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线），下一切片规划待确认。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)）
+- Execution Observation：O1–O6 FROZEN，O7 R3 PASS，O8 冻结包已交付（2026-08-14）
 - 根目录是新的 core Git 仓库（分支 main，837 个文件）：基线 commit `4e0d148`，tag `o7r3-baseline-20260813` 锁定 O7 R3 基线；远端 origin = https://github.com/zdx8637-gitdog/Xilinx_Vivado_MCP（旧内容已按授权覆盖替换，原旧远程 HEAD `59f2abb` 已记录）。`Xilinx_Vivado_MCP/`、`Xilinx_Vitis_MCP/`、`zynq_platforms/` 三个旧仓库为 legacy/已出范围（保留在磁盘、各自独立且已停更的 Git 历史，不被新仓库跟踪）
 - 下面「AI Agent 驱动 Zynq-7020 项目规则」是冻结的工作纪律，任何实现/汇报必须遵守。
 
@@ -45,7 +45,7 @@ python -m pytest mcps -m "host_live"
 3. **MCP 层** — 原子硬件操作 API（query / set / command）
 4. **EDA Process 层** — Vivado / XSCT / XSim 进程管理，不含 FPGA 业务逻辑
 
-部署演进：B02 曾用三个独立 MCP（`pl_mcp` / `platform_mcp` / `ps_mcp`），现已合并为**唯一** `mcps/zynq_mcp/` Server（B09 公开 MCP 黑盒验收 PASS），Platform/PL/PS 变为内部 domains。根目录 `.mcp.json` 当前为空注册 `{"mcpServers": {}}`（SHA256=d8e397af03b5b032f21d0aa967086f0c78b33c87b76f2e9898ae0a144df7de02，与 O1–O6 冻结记录一致）；最终「仅 `zynq` 一个入口」的注册形态待 B10/O8 决策。
+部署演进：B02 曾用三个独立 MCP（`pl_mcp` / `platform_mcp` / `ps_mcp`），现已合并为**唯一** `mcps/zynq_mcp/` Server（B09 公开 MCP 黑盒验收 PASS），Platform/PL/PS 变为内部 domains。根目录 `.mcp.json` 当前为空注册 `{"mcpServers": {}}`（SHA256=d8e397af03b5b032f21d0aa967086f0c78b33c87b76f2e9898ae0a144df7de02，与 O1–O6 冻结记录一致）；最终「仅 `zynq` 一个入口」的注册形态待后续决策（B10/O8 发布清单已知限制 ②）。
 
 ## 关键目录
 
@@ -55,7 +55,7 @@ python -m pytest mcps -m "host_live"
 | `Xilinx_Vitis_MCP/` | legacy/已出范围（独立 Git 仓库，Vitis MCP 骨架，已停更，不被新 core 仓库跟踪） |
 | `zynq_platforms/` | legacy/已出范围（独立 Git 仓库，已停更，不被新 core 仓库跟踪）。含 `ax7020_base/` block design、构建输出、Vitis workspace、Tcl 脚本 |
 | `mcps/common/` | 公共契约：`board_package.py`（板卡配置包）、`board_profile.py`、`project_lock.py`、`revision.py`、`artifact_schema.py`、`env_probe.py`、`error_codes.py`、`tool_response.py`、`api_category.py`、`control_api.py`、`jtag_lock.py`、`context.py` |
-| `mcps/zynq_mcp/` | 唯一 MCP（共 101 工具：9 control + 92 domain）：`control/`（execution_ledger、single_worker、execution_gate、instance_guard、process_guard、session、recovery、operation_service、operation_registry、capabilities、context、timeout_config、workspace）、`adapters/`（vivado/xsct/jtag/uart）、`domains/`（pl/platform/ps）。已知计数漂移（技术债，B10/O8 统一）：`capabilities.py` 的 `DOMAIN_APIS_IMPLEMENTED=91` 与实际 92 差 1；ps implemented=47 与文档 48 差 1 |
+| `mcps/zynq_mcp/` | 唯一 MCP（共 101 工具：9 control + 92 domain）：`control/`（execution_ledger、single_worker、execution_gate、instance_guard、process_guard、session、recovery、operation_service、operation_registry、capabilities、context、timeout_config、workspace）、`adapters/`（vivado/xsct/jtag/uart）、`domains/`（pl/platform/ps）。已知计数漂移（技术债，已列入 B10/O8 发布清单已知限制 ①）：`capabilities.py` 的 `DOMAIN_APIS_IMPLEMENTED=91` 与实际 92 差 1；ps implemented=47 与文档 48 差 1 |
 | `mcps/{pl_mcp,platform_mcp,ps_mcp}/` | B02 过渡遗留（最终被 zynq_mcp 取代） |
 | `boards/ALINX_AX7020_v1.0/` | Board Configuration Package — 板卡唯一数据源（README.md、board.xdc、board_profile JSON、package_manifest、ps7_preset.tcl、SOURCES.md） |
 | `skills/zynq_gpio/` | GPIO Skill（根目录 `skills/zynq_gpio/`：SKILL.md + phases/0–7 + appendix） |
@@ -75,7 +75,7 @@ python -m pytest mcps -m "host_live"
 ## 环境
 
 - Vivado 2023.1 安装于 `D:\Xilinx\Vivado\2023.1`（可用 `VIVADO_ROOT` / `VIVADO_EXEC` 环境变量覆盖）
-- MCP Server 注册见根目录 `.mcp.json`（当前为空注册 `{"mcpServers": {}}`，SHA256=d8e397af03b5b032f21d0aa967086f0c78b33c87b76f2e9898ae0a144df7de02；最终「仅 `zynq` 一个入口」的注册形态待 B10/O8 决策）
+- MCP Server 注册见根目录 `.mcp.json`（当前为空注册 `{"mcpServers": {}}`，SHA256=d8e397af03b5b032f21d0aa967086f0c78b33c87b76f2e9898ae0a144df7de02；最终「仅 `zynq` 一个入口」的注册形态待后续决策，B10/O8 发布清单已知限制 ②）
 - `.claude/settings.json` 设 `enableAllProjectMcpServers: true` 使项目 MCP Server 自动启动
 - 测试运行时 `ZYNQ_BOARD_PROFILE_DIRS` 和 `ZYNQ_RUNTIME_ROOT` 由 `conftest.py` 注入，生产环境不设
 - **测试必须从项目根目录运行**（`python -m pytest mcps`）：若 `cd mcps && python -m pytest`，约 20 个 MCP SDK contract 测试会因派生 `python -m mcps.zynq_mcp.server` 子进程在 CWD `mcps/` 下无法 import `mcps` 而失败

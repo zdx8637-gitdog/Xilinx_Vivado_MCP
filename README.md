@@ -2,7 +2,7 @@
 
 > 项目根: `D:\fpgaproject`
 > 架构: `docs/architecture_ai_zynq7020.md` v2.3.1 (FROZEN TOP-LEVEL)
-> 当前：B00–B06 基础能力已完成；B07/B08/B09 硬件功能链路 PASS；Execution Observation O1–O6 已冻结；O7 R3 全新 Agent2 公开 MCP 黑盒验收 PASS，B09 契约勘误已由用户审核关闭；B10 等待用户确认基线与下一切片后进入 O8 冻结
+> 当前：B00–B06 基础能力已完成；B07/B08/B09 硬件功能链路 PASS；Execution Observation O1–O6 已冻结；O7 R3 全新 Agent2 公开 MCP 黑盒验收 PASS，B09 契约勘误已由用户审核关闭；B10/O8 冻结包已交付（用户确认 GPIO v1 稳定基线），下一切片规划待确认
 
 ## B03 板卡配置包与环境基线
 
@@ -43,7 +43,7 @@
 | B07 | ✅ SKILL CONTRACT REMEDIATED / O6 FROZEN | 逃生通道已删除；Agent1 只用 Skill + 公开 MCP 完成真实重放 |
 | B08 | ✅ WHITE-BOX HARDWARE PASS | Agent1 R6 已完成真实硬件全链路 |
 | B09 | ✅ COMPLETE（PUBLIC MCP BLACK-BOX PASS） | 全新 Agent2 仅用 Skill + 公开 MCP 完成 P1–P6；Consistency 12/12、UART 8/8、`GPIO_E2E_PASS`，边界与清理审计通过；契约勘误已关闭 |
-| B10 | ⏸️ AWAITING USER DECISION | B09 勘误已关闭；待用户确认 GPIO v1 基线并选择下一切片后启动 O8 冻结 |
+| B10 | ✅ COMPLETE（O8 冻结包已交付） | 用户已确认 GPIO v1 稳定基线（2026-08-14）；发布清单见 [B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；下一切片方向已提出（数据采集切片），正式规划待确认 |
 
 当前O1冻结基线（2026-08-12）：`ALL_TOOLS=101`；`mcps` 1264 collected；O1专项 24 passed；最终非硬件回归 1225 passed / 1 skipped / 38 deselected。另行真实入口验证 12 passed；其余26项host/device-live未在O1重复执行。
 

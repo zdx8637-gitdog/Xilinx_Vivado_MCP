@@ -71,7 +71,7 @@ development/tests/B09_gpio_agent2_blackbox_report.md
 | B07 | 统一 Skill 调用唯一 zynq_mcp，完成 GPIO Workflow | Skill + MCP | ✅ **COMPLETE / CONTRACT ERRATUM CLOSED** |
 | B08 | Agent1 完成 GPIO 白盒验收与故障注入 | Tests + Skill | ✅ **WHITE-BOX HARDWARE PASS (R6)** |
 | B09 | Agent2 在干净环境完成黑盒复现 | Tests | ✅ **COMPLETE（公开 MCP 纯黑盒 PASS）** |
-| B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ⏸️ **AWAITING USER DECISION（基线与下一切片）** |
+| B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ✅ **O8 冻结包 COMPLETE（2026-08-14）；下一切片规划待确认** |
 
 ## 5. 逐 Brick 交付与门禁
 
@@ -306,6 +306,8 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 
 > **当前门禁**：O7 技术验收已通过，但 B10 不自动冻结。B09 契约勘误已关闭；B10 等待用户确认 GPIO v1 稳定基线并选择下一纵向切片（Interrupt / DMA loopback / ILA debug / Boot），随后归档版本、发布清单、能力矩阵与已知限制（O8）。
 
+**B10 完成记录（2026-08-14）**：用户已确认 GPIO v1 为稳定基线，O8 冻结包已交付。发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)：tag `o7r3-baseline-20260813` → commit `4e0d1482477e9afc3a000837298c0f63dcf60c34`；本轮回归 1331 passed / 1 skipped / 37 deselected（0 failed）、1369 collected；12 项冻结资产 SHA256 已归档（`platform_domain.py`、`.mcp.json` 与 O6/O1–O6 冻结记录一致）；已知限制 6 项已记录。下一切片方向已提出（数据采集切片：PL AD 采集 → DMA → DDR3 → PS 读 DDR3 → UART 上行 → 上位机成像/分析），**正式规划待确认**，本完成记录不视为下一切片已选定。
+
 ## 6. 当前工作
 
 - B00–B03：✅ COMPLETE / FROZEN。
@@ -315,9 +317,9 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 - B07：✅ GPIO Skill 功能与公开 MCP 契约重验通过；契约勘误已关闭。
 - B08：✅ Agent1 R6 白盒硬件 PASS；作为功能证据保留。
 - B09：✅ COMPLETE；O7 R3 全新 Agent2 公开 MCP 纯黑盒 PASS，契约勘误已关闭；R1/R2 失败作为历史整改证据保留。
-- B10：⏸️ AWAITING USER DECISION；B09 勘误已关闭，等待用户确认 GPIO v1 稳定基线并选择下一纵向切片，然后启动 O8 冻结。
+- B10：✅ O8 冻结包 COMPLETE（2026-08-14）；用户已确认 GPIO v1 稳定基线；发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)；下一切片方向已提出，正式规划待确认。
 - Execution Observation Contract：✅ [v1.0 COMPLETE / FROZEN](development/mcp/B09_execution_observation_contract.md)。
-- 总体完善方案：[O1–O6 COMPLETE / FROZEN；O7 R3 PASS；O8 NOT STARTED](development/mcp/B09_execution_observation_implementation_plan.md)。
+- 总体完善方案：[O1–O6 COMPLETE / FROZEN；O7 R3 PASS；O8 冻结包已交付（2026-08-14，见 B10 发布清单）](development/mcp/B09_execution_observation_implementation_plan.md)。
 - O1冻结证据：[B09_O1_completion_report.md](development/mcp/B09_O1_completion_report.md)。
 - O2实施证据：[B09_O2_implementation_report.md](development/mcp/B09_O2_implementation_report.md)。
 - O3实施证据：[B09_O3_implementation_report.md](development/mcp/B09_O3_implementation_report.md)。
