@@ -71,7 +71,8 @@ development/tests/B09_gpio_agent2_blackbox_report.md
 | B07 | 统一 Skill 调用唯一 zynq_mcp，完成 GPIO Workflow | Skill + MCP | ✅ **COMPLETE / CONTRACT ERRATUM CLOSED** |
 | B08 | Agent1 完成 GPIO 白盒验收与故障注入 | Tests + Skill | ✅ **WHITE-BOX HARDWARE PASS (R6)** |
 | B09 | Agent2 在干净环境完成黑盒复现 | Tests | ✅ **COMPLETE（公开 MCP 纯黑盒 PASS）** |
-| B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ✅ **O8 冻结包 COMPLETE（2026-08-14）；下一切片规划待确认** |
+| B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ✅ **O8 冻结包 COMPLETE（2026-08-14）；下一切片方向已由 B11 承接** |
+| B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ⏳ **立项（2026-08-14）；阶段① 泛化 Skill 重写进行中** |
 
 ## 5. 逐 Brick 交付与门禁
 
@@ -308,6 +309,29 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 
 **B10 完成记录（2026-08-14）**：用户已确认 GPIO v1 为稳定基线，O8 冻结包已交付。发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)：tag `o7r3-baseline-20260813` → commit `4e0d1482477e9afc3a000837298c0f63dcf60c34`；本轮回归 1331 passed / 1 skipped / 37 deselected（0 failed）、1369 collected；12 项冻结资产 SHA256 已归档（`platform_domain.py`、`.mcp.json` 与 O6/O1–O6 冻结记录一致）；已知限制 6 项已记录。下一切片方向已提出（数据采集切片：PL AD 采集 → DMA → DDR3 → PS 读 DDR3 → UART 上行 → 上位机成像/分析），**正式规划待确认**，本完成记录不视为下一切片已选定。
 
+### B11：泛化框架黑盒验证（Skill/MCP 去 GPIO 化 + 6-LED 考题）
+
+目标：把 GPIO 配方 Skill 泛化为**零 GPIO 字样**的通用工程框架（S0–S8 九阶段），MCP 彻底去 GPIO 化（B05 冻结资产 `platform_generate` 按勘误处置），并以 **6-LED 项目需求（PL 4 + PS 2 一起控制）** 作为黑盒考题，证明 Skill + MCP 是面向任意 Zynq 工程开发的通用框架——具体项目只是一份递给智能体的需求文档。
+
+配套文档：
+
+- 规划（六阶段计划与门禁）：[B11_plan.md](development/mcp/B11_plan.md)
+- B05 冻结资产处置勘误草案：[B11_platform_generate_erratum_draft.md](development/mcp/B11_platform_generate_erratum_draft.md)
+- 6-LED 黑盒考题需求草案：[B11_blackbox_requirement_draft.md](../tests/B11_blackbox_requirement_draft.md)
+- 泛化 Skill 设计基础：[B11_generalized_skill_design.md](../skill/B11_generalized_skill_design.md)
+- 数据采集提案已改述为「验证实例候选（非当前立项对象）」：[B11_data_acquisition_proposal.md](development/mcp/B11_data_acquisition_proposal.md)
+
+阶段：① 泛化 Skill 重写（进行中）→ ② MCP 去 GPIO 化 → ③ Agent1 白盒自测 → ④ Agent3 阶段黑盒 → ⑤ 用户硬件确认 → ⑥ Agent2 终验黑盒。
+
+完成门禁：
+
+- 新 Skill 机械扫描 GPIO / LED 等考题外设字样 0 命中；旧 GPIO Skill 按方案 A 归档（`git mv` + SHA256 记录）；
+- MCP 工具 101→100，capability 常量修正（关闭 B10 已知限制①）；
+- 全量回归不净减（基线：1369 collected / 1331 passed / 1 skipped / 37 deselected）；
+- 黑盒终验沿用 B09 硬门禁：零 shell、全公开 MCP、Execution Ledger 全覆盖、Consistency 通过、6-LED 硬件现象由用户确认。
+
+> **立项记录（2026-08-14）**：用户批准 B11 规划并授权进入阶段①。方向要点：GPIO 项目仅作为需求考题，Skill 与 MCP 是面向任意 Zynq 工程的通用框架（用户分工：板卡物理事实归用户，Zynq 工程层归智能体）；数据采集（AD→DMA→DDR3→UART→上位机成像）降级为未来验证实例候选；旧 GPIO Skill 归档方式选定方案 A（`docs/development/skill/archive/zynq_gpio_v1/`）；阶段机推进权默认按规划推荐 (a)=`platform_export_manifest` 承担推进（用户未反对）。
+
 ## 6. 当前工作
 
 - B00–B03：✅ COMPLETE / FROZEN。
@@ -317,7 +341,8 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 - B07：✅ GPIO Skill 功能与公开 MCP 契约重验通过；契约勘误已关闭。
 - B08：✅ Agent1 R6 白盒硬件 PASS；作为功能证据保留。
 - B09：✅ COMPLETE；O7 R3 全新 Agent2 公开 MCP 纯黑盒 PASS，契约勘误已关闭；R1/R2 失败作为历史整改证据保留。
-- B10：✅ O8 冻结包 COMPLETE（2026-08-14）；用户已确认 GPIO v1 稳定基线；发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)；下一切片方向已提出，正式规划待确认。
+- B10：✅ O8 冻结包 COMPLETE（2026-08-14）；用户已确认 GPIO v1 稳定基线；发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)；下一切片方向已由 B11 承接（方向重定：泛化框架黑盒验证）。
+- B11：⏳ 立项（2026-08-14）；阶段① 泛化 Skill 重写进行中；规划见 [B11_plan.md](development/mcp/B11_plan.md)。
 - Execution Observation Contract：✅ [v1.0 COMPLETE / FROZEN](development/mcp/B09_execution_observation_contract.md)。
 - 总体完善方案：[O1–O6 COMPLETE / FROZEN；O7 R3 PASS；O8 冻结包已交付（2026-08-14，见 B10 发布清单）](development/mcp/B09_execution_observation_implementation_plan.md)。
 - O1冻结证据：[B09_O1_completion_report.md](development/mcp/B09_O1_completion_report.md)。
