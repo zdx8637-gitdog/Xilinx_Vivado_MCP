@@ -265,14 +265,17 @@ DOMAIN_TOOLS: list[Tool] = [
              "fail_marker": {"type": "string", "minLength": 1}},
              "required": ["uart_text", "pass_marker", "fail_marker"],
              "additionalProperties": False}),
-    # B05-R2 Platform Domain atomic APIs (14). Composable building blocks from
-    # B01 §7 Phase 1 / Architecture §4.3.3. Each sends Tcl through the shared
-    # _run_tcl channel. Command atoms do not advance the workflow stage except
-    # platform_export_manifest — the terminal atom of the platform sequence —
-    # which advances PLATFORM_DESIGN → PL_GENERATE on success (B11 phase 2
-    # decision (a); the removed B05 shortcut platform_generate was the former
-    # sole forward path of that transition).
-    # Command atoms (12): session context keys (board_id/project_path/
+    # B05-R2 + B11 phase ③.1 Platform Domain atomic APIs (17). Composable
+    # building blocks from B01 §7 Phase 1 / Architecture §4.3.3. Each sends Tcl
+    # through the shared _run_tcl channel. Command atoms do not advance the
+    # workflow stage except platform_export_manifest — the terminal atom of
+    # the platform sequence — which advances PLATFORM_DESIGN → PL_GENERATE on
+    # success (B11 phase 2 decision (a); the removed B05 shortcut
+    # platform_generate was the former sole forward path of that transition).
+    # The three B11 ③.1 additions (platform_assign_addresses /
+    # platform_make_external / platform_synthesize) are admitted only in
+    # PLATFORM_DESIGN and never advance the stage.
+    # Command atoms (15): session context keys (board_id/project_path/
     # board_profile_sha256) are injected by the dispatcher; the VivadoAdapter
     # is injected by the CommandRunner (_pl_adapter marker). Query atoms (2):
     # read directly.
@@ -286,7 +289,7 @@ DOMAIN_TOOLS: list[Tool] = [
     Tool(name="platform_add_ps7", description="Instantiate and configure the Zynq PS7 from the board ps7 preset (atom API)",
          inputSchema={"type": "object", "properties": {
              "preset_name": {"type": "string"}}, "additionalProperties": False}),
-    Tool(name="platform_configure_ps7", description="Update PS7 CONFIG.PCW_* properties; idempotent partial update (only listed fields)",
+    Tool(name="platform_configure_ps7", description="Update PS7 CONFIG.PCW_* properties; idempotent partial update (only listed fields; gpio.emio_enable/width/io enable the EMIO GPIO route — D0)",
          inputSchema={"type": "object", "properties": {
              "config": {"type": "object", "properties": {
                  "m_axi_gp0": {"type": "boolean"},
@@ -299,6 +302,11 @@ DOMAIN_TOOLS: list[Tool] = [
                  "fclk1_mhz": {"type": "integer", "minimum": 0},
                  "uart1": {"type": "object", "properties": {
                      "enable": {"type": "boolean"}, "io": {"type": "string"}},
+                     "additionalProperties": False},
+                 "gpio": {"type": "object", "properties": {
+                     "emio_enable": {"type": "boolean"},
+                     "width": {"type": "integer", "minimum": 0},
+                     "io": {"type": "string"}},
                      "additionalProperties": False},
                  "ddr": {"type": "string"}},
                  "additionalProperties": True}},
@@ -327,23 +335,38 @@ DOMAIN_TOOLS: list[Tool] = [
              "source": {"type": "string", "minLength": 1},
              "targets": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}},
              "required": ["source", "targets"], "additionalProperties": False}),
-    Tool(name="platform_set_address", description="Set a slave segment base address (and optional size), segment format '<ip_instance>/S_AXI', e.g. 'my_slave_0/S_AXI'",
+    Tool(name="platform_set_address", description="Set a slave segment base address (and optional size), segment format '<ip_instance>/<interface>' e.g. 'my_slave_0/S_AXI' (resolved automatically to the real segment '<ip>/<intf>/Reg'); the assignment path is platform_assign_addresses (set_property on a BD segment is read-only in Vivado 2023.1)",
          inputSchema={"type": "object", "properties": {
              "segment": {"type": "string", "minLength": 1},
              "base": {"type": ["integer", "string"], "minLength": 1},
              "size": {"type": "integer", "minimum": 1}},
              "required": ["segment", "base"], "additionalProperties": False}),
-    Tool(name="platform_validate", description="Validate the open Block Design; errors / critical warnings fail the call",
+    Tool(name="platform_assign_addresses", description="Auto-assign BD slave address segments (assign_bd_address; segments optional list of '<ip>/<intf>' patterns) and return the resulting per-master address_map (idempotent; D1)",
+         inputSchema={"type": "object", "properties": {
+             "segments": {"type": "array", "items": {"type": "string", "minLength": 1}}},
+             "additionalProperties": False}),
+    Tool(name="platform_make_external", description="Externalize a BD pin/interface as a top-level port: signal mode creates a BD port (direction in|out|inout, optional vector width) and connects source_pin; interface=true runs make_bd_pins_external (D2)",
+         inputSchema={"type": "object", "properties": {
+             "port_name": {"type": "string", "minLength": 1},
+             "source_pin": {"type": "string", "minLength": 1},
+             "direction": {"type": "string", "enum": ["in", "out", "inout"]},
+             "width": {"type": "integer", "minimum": 1},
+             "interface": {"type": "boolean"}},
+             "required": ["port_name", "source_pin"], "additionalProperties": False}),
+    Tool(name="platform_validate", description="Validate the open Block Design with -force (cache-invalidating); errors / critical warnings fail the call (D7)",
          inputSchema={"type": "object", "properties": {}, "additionalProperties": False}),
     Tool(name="platform_generate_wrapper", description="Generate the BD wrapper HDL and copy it under {project_path}/hdl",
          inputSchema={"type": "object", "properties": {}, "additionalProperties": False}),
+    Tool(name="platform_synthesize", description="Run top-level synthesis (launch_runs synth_1 → wait_on_run → open_run) so the exported XSA contains HDF; reports run STATUS + WNS (D3)",
+         inputSchema={"type": "object", "properties": {
+             "jobs": {"type": "integer", "minimum": 1}}, "additionalProperties": False}),
     Tool(name="platform_export_hardware", description="Export a hardware platform (.xsa); default path {project_path}/platform.xsa",
          inputSchema={"type": "object", "properties": {
              "path": {"type": "string"}}, "additionalProperties": False}),
     Tool(name="platform_export_manifest", description="Re-export the structured platform manifest JSON from the open BD (standalone, idempotent); requires a ready BD plus existing wrapper + XSA under {project_path}; default path {project_path}/manifests/platform/sha256_<rev>.json",
          inputSchema={"type": "object", "properties": {
              "path": {"type": "string"}}, "additionalProperties": False}),
-]  # R3.1-C + B05 + B06 first batch (22 PS) + B06 second batch (11 BSP) + B06 third batch (9 download/debug) + B07 PL bridge (26) + B01 UART capture (3) + B01 Phase 4 verify_consistency (1) + B01 UART diagnostics (1) + B01 Phase 6 observation (1) + B05-R2 platform atoms (14) + ps_ensure_arm_accessible (1)
+]  # R3.1-C + B05 + B06 first batch (22 PS) + B06 second batch (11 BSP) + B06 third batch (9 download/debug) + B07 PL bridge (26) + B01 UART capture (3) + B01 Phase 4 verify_consistency (1) + B01 UART diagnostics (1) + B01 Phase 6 observation (1) + B05-R2 platform atoms (14) + B11 ③.1 platform atoms (3) + ps_ensure_arm_accessible (1)
 
 def _inject_ps_session_schema(tool: Tool) -> Tool:
     """Expose the transport session contract that dispatcher enforces.
@@ -390,7 +413,7 @@ def build_capabilities(instance_role: str = "primary",
         "status": "adapter_ready" if adapter_status == "ready" else "single_channel_ready",
         "instance_role": instance_role,
         "domains": {
-            "platform":   {"implemented": 14, "planned": 14, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},  # B05-R2 atoms(14); platform_generate removed B11 phase 2
+            "platform":   {"implemented": 17, "planned": 14, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},  # B05-R2 atoms(14) + B11 ③.1 assign_addresses/make_external/synthesize(17); platform_generate removed B11 phase 2
             "pl":         {"implemented": 27, "planned": 12, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},
             "ps":         {"implemented": 48, "planned": 19, "status": "bridge_ready"},
             "control":    {"implemented": len(CONTROL_TOOLS), "total": len(CONTROL_TOOLS)},

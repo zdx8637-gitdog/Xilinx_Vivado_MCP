@@ -951,8 +951,9 @@ class TestRegistrationConsistency:
     def test_total_tools_is_100(self):
         from mcps.zynq_mcp.control.capabilities import ALL_TOOLS
         # B11 phase 2: platform_generate removed → 100 total (9 control + 91
-        # domain); was 101 with the shortcut.
-        assert len(ALL_TOOLS) == 100
+        # domain); was 101 with the shortcut. B11 ③.1: + assign_addresses /
+        # make_external / synthesize → 103 (9 control + 94 domain).
+        assert len(ALL_TOOLS) == 103
 
 
 # ── _execute bridge injection (production CommandRunner path) ─────────────

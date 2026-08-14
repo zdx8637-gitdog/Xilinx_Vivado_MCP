@@ -377,7 +377,11 @@ def _shared_preflight_check(ledger, tool_name, session_id, resource_req=None):
         if not hb: raise ChannelBusyError("WORKER_HEARTBEAT_MISSING")
         hb_ts = _parse_iso(hb)
         if hb_ts <= 0: raise ChannelBusyError("WORKER_HEARTBEAT_UNREADABLE")
-        if time.time() - hb_ts > 120.0: raise ChannelBusyError("WORKER_UNRESPONSIVE")
+        # B11 阶段③.1 (D4): the process was verified alive + identity-consistent
+        # just above (P2/P3 equivalent). A stale heartbeat on an idle,
+        # verified-alive worker is an idle condition, not a rejection — it no
+        # longer blocks admission (mirrors the execution_gate P5 semantics).
+        # Missing / unparseable timestamps still fail closed above.
 
     if _check_stage(tool_name, cur_stage, po):
         raise ChannelBusyError("STAGE_PREREQUISITE_UNMET")

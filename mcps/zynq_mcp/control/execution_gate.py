@@ -66,13 +66,34 @@ def _gate(ledger, tool_name, arguments, session_id, board_id, project_path, op_i
         if expected_exe is not None and ident.executable_path != expected_exe:
             raise ChannelBusyError("WORKER_IDENTITY_MISMATCH")
 
-    # ---- P5: heartbeat ----
+    # ---- P5: heartbeat (asks for the process) ----
+    # B11 阶段③.1 (D4): P5 no longer double-counts the process. P2 above has
+    # just proven the PID is alive and P3 has proven the full 5-field identity
+    # matches — the worker process demonstrably exists. A STALE heartbeat
+    # timestamp on an otherwise verified-alive worker is an idle condition, not
+    # a rejection: the SingleWorkerController refreshes the timestamp on every
+    # heartbeat tick, and when no operation is active the heartbeat may be
+    # legitimately old. So staleness alone never blocks admission (it is
+    # recorded on the worker record as ``last_heartbeat_stale_s`` for
+    # observability). Missing or unparseable heartbeat timestamps still fail
+    # closed (WORKER_HEARTBEAT_MISSING / WORKER_HEARTBEAT_UNREADABLE): they
+    # carry no evidence the worker was ever heartbeat-maintained.
+    #
+    # Runtime-operation fail-closedness is UNAFFECTED: heartbeat freshness
+    # during an active operation is the responsibility of the execution
+    # observer / process controller (stale during an operation → 
+    # RECOVERY_REQUIRED), not of this admission gate.
     if pid and pid > 0 and wo.get("state") not in (WORKER_STATE_ABSENT, WORKER_STATE_DEAD):
         hb = wo.get("last_heartbeat_at")
         if not hb: raise ChannelBusyError("WORKER_HEARTBEAT_MISSING")
         try:
-            if time.time() - _parse_iso(hb) > 120.0: raise ChannelBusyError("WORKER_UNRESPONSIVE")
+            hb_ts = _parse_iso(hb)
+            if hb_ts <= 0: raise ValueError("bad heartbeat timestamp")
         except Exception: raise ChannelBusyError("WORKER_HEARTBEAT_UNREADABLE")
+        age = time.time() - hb_ts
+        if age > 120.0:
+            # Diagnostic only — process liveness was already proven by P2/P3.
+            ledger.worker["last_heartbeat_stale_s"] = round(age, 1)
 
     # ---- P7: workflow stage (with evidence for synthesis/implement/timing) ----
     if _check_stage(tool_name, cur_stage, po):
@@ -129,6 +150,13 @@ def _check_stage(tool_name, current, prev_op):
         # removed shortcut name): the BD wrapper is only regenerated while the
         # platform design is still open — before platform_export_manifest
         # locks the manifest and advances to PL_GENERATE.
+        if current != "PLATFORM_DESIGN": return True
+    elif "platform_assign_addresses" in t or "platform_make_external" in t \
+            or "platform_synthesize" in t:
+        # B11 阶段③.1 (D1/D2/D3): the three added platform atoms (address
+        # assignment, port externalization, synthesis) are BD-design steps —
+        # admitted only in PLATFORM_DESIGN, before platform_export_manifest
+        # advances the frozen stage machine. None of them advances the stage.
         if current != "PLATFORM_DESIGN": return True
     elif "pl_generate_system_top" in t:
         if current != "PL_GENERATE": return True  # E003: PLATFORM_DESIGN→PL_BUILD skip rejected

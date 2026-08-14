@@ -246,7 +246,9 @@ class TestPublicMCP:
                         # ps_ensure_arm_accessible adds 1 → 100 total.
                         # B11 phase 2: platform_generate removed → 100 total
                         # (9 control + 91 domain).
-                        assert len(names) == 100
+                        # B11 ③.1: assign_addresses/make_external/synthesize
+                        # added → 103 total (9 control + 94 domain).
+                        assert len(names) == 103
                         pl_in = [n for n in names if n.startswith("pl_")]
                         # B07 registered 26 PL bridge tools on top of
                         # pl_generate_system_top. Every registered pl_* tool

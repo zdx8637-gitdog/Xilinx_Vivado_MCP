@@ -381,8 +381,17 @@ class TestR3Runner:
         assert len(called) == 0
 
     @pytest.mark.asyncio
-    async def test_R3X04_p5_stale_heartbeat(self, rtg):
-        """P5: stale heartbeat (>120s) -> WORKER_UNRESPONSIVE via CommandRunner, executor=0."""
+    async def test_R3X04_p5_stale_heartbeat_admitted_when_process_alive(self, rtg):
+        """P5 (B11 ③.1 D4 remap): stale heartbeat (>120s) on a REAL alive
+        process with matching identity is an idle condition, not a rejection —
+        the command is admitted (executor runs) instead of WORKER_UNRESPONSIVE.
+
+        Old semantics (pre-remediation): stale heartbeat alone → blocked with
+        WORKER_UNRESPONSIVE. New semantics: P2/P3 above already proved the
+        process is alive and identity-consistent, so staleness no longer
+        double-counts. Missing / unreadable heartbeats still block (covered by
+        test_R3X04b below).
+        """
         l, g, lp, sid = _setup_board(rtg)
         import sys
         pid = os.getpid()
@@ -402,9 +411,49 @@ class TestR3Runner:
         oreg = OperationRegistry(); mutex = DomainExecutionMutex()
         runner = CommandRunner(g, lp, oreg, mutex, worker=fake)
         r = await runner.run_command("pl_connect_hw_server", {}, sid, BOARD, "p5t", executor="worker", timeout_s=5)
+        assert r["status"] == "success", r
+        # run_command returns as soon as the operation is admitted; poll the
+        # ledger until the worker task reaches a terminal state, then assert
+        # the executor really ran (admission was granted).
+        oid = r["data"]["operation_id"]
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            l2, _ = ledger_read_shared(g, lp)
+            po = l2.previous_operation or {}
+            if po.get("operation_id") == oid and po.get("status") in OP_TERMINAL:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("operation did not reach a terminal state")
+        assert len(called) == 1, "Executor MUST run once the alive process is admitted"
+
+    @pytest.mark.asyncio
+    async def test_R3X04b_p5_missing_heartbeat_still_blocks(self, rtg):
+        """P5 (B11 ③.1 D4): a missing heartbeat on a live worker still fails
+        closed with WORKER_HEARTBEAT_MISSING — no heartbeat evidence means the
+        worker was never heartbeat-maintained (the missing branch is retained
+        by the remediation; only staleness became non-blocking)."""
+        l, g, lp, sid = _setup_board(rtg)
+        pid = os.getpid()
+        from mcps.zynq_mcp.control.process_guard import get_process_identity
+        ident = get_process_identity(pid)
+        assert ident is not None
+        def _w(lx):
+            lx.worker["state"] = WORKER_STATE_READY; lx.worker["pid"] = pid
+            lx.worker["process_start_time"] = ident.process_start_time
+            lx.worker["executable_path"] = ident.executable_path
+            lx.worker["worker_generation"] = 1
+            lx.worker["instance_id"] = lx.primary_instance_id
+            lx.worker["last_heartbeat_at"] = None
+            return lx
+        ledger_transaction(g, lp, _w)
+        called = []; fake = FakeSingleWorker(call_count=called)
+        oreg = OperationRegistry(); mutex = DomainExecutionMutex()
+        runner = CommandRunner(g, lp, oreg, mutex, worker=fake)
+        r = await runner.run_command("pl_connect_hw_server", {}, sid, BOARD, "p5mb", executor="worker", timeout_s=5)
         assert r["status"] == "error"
-        assert r["error"]["details"]["reason_code"] == "WORKER_UNRESPONSIVE"
-        assert len(called) == 0
+        assert r["error"]["details"]["reason_code"] == "WORKER_HEARTBEAT_MISSING"
+        assert len(called) == 0, "Executor must NOT be called on missing heartbeat"
 
     @pytest.mark.asyncio
     async def test_R3X05_p6_unresolved_previous(self, rtg):
@@ -755,9 +804,9 @@ class TestR3Runner:
         assert r["status"] == "success"
 
     def test_Xlist_tools_is_ten(self):
-        """E007: R3.1-C list_tools=10 (9 control + 1 PL domain). B05 adds platform_generate → 11. B06 first batch adds 24 PS → 35. B06 2nd batch adds 11 BSP → 46. B07 PL bridge adds 26 → 72. B06 third batch (9 download+debug) → 81. B01 UART capture adds 3 → 84. B01 UART diagnostics adds 1 → 85. B01 Phase 4 verify_consistency adds 1 → 86. B01 Phase 6 observation adds 1 → 87. B05-R2 platform atoms add 14 → 101. B11 phase 2 removes platform_generate → 100 (9 control + 91 domain)."""
+        """E007: R3.1-C list_tools=10 (9 control + 1 PL domain). B05 adds platform_generate → 11. B06 first batch adds 24 PS → 35. B06 2nd batch adds 11 BSP → 46. B07 PL bridge adds 26 → 72. B06 third batch (9 download+debug) → 81. B01 UART capture adds 3 → 84. B01 UART diagnostics adds 1 → 85. B01 Phase 4 verify_consistency adds 1 → 86. B01 Phase 6 observation adds 1 → 87. B05-R2 platform atoms add 14 → 101. B11 phase 2 removes platform_generate → 100 (9 control + 91 domain). B11 ③.1 adds assign_addresses/make_external/synthesize → 103 (9 control + 94 domain)."""
         from mcps.zynq_mcp.control.capabilities import ALL_TOOLS
-        assert len(ALL_TOOLS) == 100
+        assert len(ALL_TOOLS) == 103
 
     @pytest.mark.asyncio
     async def test_long_run_does_not_fabricate_heartbeat(self, rtg):

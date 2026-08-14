@@ -1,12 +1,15 @@
 """
-platform_atoms.py — Platform atomic APIs (B05-R2).
+platform_atoms.py — Platform atomic APIs (B05-R2 + B11 phase ③.1).
 
-Implements the 14 composable Platform Domain atoms from B01 §7 Phase 1 /
+Implements the 17 composable Platform Domain atoms from B01 §7 Phase 1 /
 Architecture §4.3.3. B05-R2 completed the header-table API list by adding
 ``platform_connect_reset`` and ``platform_export_manifest`` to the original
 12 (the two APIs were listed in the §4.3.3 header table but omitted from the
-detailed spec segment, so the initial 12-atom delivery skipped them). Each
-function is stateless: it receives the Vivado
+detailed spec segment, so the initial 12-atom delivery skipped them). B11
+phase ③.1 (D1/D2/D3) added the three missing BD-design atoms
+``platform_assign_addresses`` (address assignment), ``platform_make_external``
+(port externalization) and ``platform_synthesize`` (top-level synthesis so the
+exported XSA contains HDF). Each function is stateless: it receives the Vivado
 adapter as its first positional argument (injected by the CommandRunner via
 the ``_pl_adapter`` marker for command atoms, or by the dispatcher query
 handlers for query atoms) and forwards every Tcl command through the shared
@@ -14,19 +17,27 @@ handlers for query atoms) and forwards every Tcl command through the shared
 ``platform_generate`` used, with the same cold-start retry and the same
 error contract.
 
+Tcl capture contract (D8, verified against real Vivado 2023.1): the Tcl
+shell bridge captures only stdout — Tcl command RETURN VALUES are not echoed.
+Every query atom therefore prints its result with ``puts`` (e.g.
+``puts [get_bd_cells *]``); a bare result-returning command would come back
+empty and silently corrupt the manifest (the D8 symptom).
+
 Command atoms do NOT advance the workflow stage (next_stage=None) except
 ``platform_export_manifest`` — the terminal atom of the platform sequence —
 which advances PLATFORM_DESIGN → PL_GENERATE on success (B11 phase 2
 decision (a)). The B05 shortcut ``platform_generate`` was removed in B11
-phase 2; these atoms are the replacement path.
+phase 2; these atoms are the replacement path. The three added atoms are
+admitted only in PLATFORM_DESIGN (execution_gate._check_stage) and never
+advance the stage.
 
 Atoms:
-  command (12, adapter injected by CommandRunner):
+  command (15, adapter injected by CommandRunner):
     platform_create_design, platform_add_ps7, platform_configure_ps7,
     platform_add_ip, platform_connect_interface, platform_connect_clock,
-    platform_connect_reset, platform_set_address, platform_validate,
-    platform_generate_wrapper, platform_export_hardware,
-    platform_export_manifest
+    platform_connect_reset, platform_set_address, platform_assign_addresses,
+    platform_make_external, platform_validate, platform_generate_wrapper,
+    platform_synthesize, platform_export_hardware, platform_export_manifest
   query (2, adapter injected by dispatcher query handlers):
     platform_get_status, platform_list_ips
 
@@ -51,9 +62,12 @@ from mcps.zynq_mcp.domains.platform.platform_domain import (
     _tcl_output,
     _resolve_board_package,
     _sha256_file,
+    SYNTH_TIMEOUT_S,
     PlatformError,
     BoardPackageNotFoundError,
     AdapterError,
+    TclError,
+    SynthesisError,
     BdValidationError,
     WrapperExportError,
     XsaExportError,
@@ -90,12 +104,16 @@ async def platform_get_status(adapter) -> dict:
     """Query the open Vivado project name and BD cell count (query atom).
 
     Pure read: get_property NAME [current_project] + llength [get_bd_cells *].
-    A missing project or BD design fails closed via AdapterError.
+    A missing project or BD design fails closed via AdapterError. Results are
+    printed with ``puts`` — the Tcl bridge captures stdout only, never a bare
+    command return value (D8).
     """
-    name_data = await _run_tcl(adapter, "get_property NAME [current_project]",
+    name_data = await _run_tcl(adapter,
+                               "puts [get_property NAME [current_project]]",
                                "get_project_name")
     project_name = _tcl_output(name_data).strip()
-    count_data = await _run_tcl(adapter, "llength [get_bd_cells *]",
+    count_data = await _run_tcl(adapter,
+                                "puts [llength [get_bd_cells *]]",
                                 "count_bd_cells")
     count_text = _tcl_output(count_data).strip()
     ip_count = int(count_text) if count_text.isdigit() else None
@@ -167,6 +185,11 @@ _PS7_CONFIG_TO_PCW = {
     "uart1_enable": ("PCW_UART1_PERIPHERAL_ENABLE", "bool"),
     "uart1_io": ("PCW_UART1_GRP_FULL_IO", "mio"),
     "ddr": ("PCW_UIPARAM_DDR_PARTNO", "str"),
+    # B11 phase ③.1 (D0): EMIO GPIO route. Nested key ``gpio: {emio_enable,
+    # width, io}`` flattens to gpio_emio_enable / gpio_width / gpio_io.
+    "gpio_emio_enable": ("PCW_EN_EMIO_GPIO", "bool"),
+    "gpio_width": ("PCW_GPIO_EMIO_GPIO_WIDTH", "int"),
+    "gpio_io": ("PCW_GPIO_EMIO_GPIO_IO", "mio"),
 }
 
 
@@ -262,7 +285,7 @@ async def platform_add_ip(adapter, *, vlnv: str, instance_name: str,
     props = properties if isinstance(properties, dict) else {}
 
     exists_data = await _run_tcl(adapter,
-        f"llength [get_bd_cells -quiet {instance_name}]", "check_ip_exists")
+        f"puts [llength [get_bd_cells -quiet {instance_name}]]", "check_ip_exists")
     exists = _tcl_output(exists_data).strip() == "1"
 
     if exists:
@@ -295,13 +318,14 @@ async def platform_add_ip(adapter, *, vlnv: str, instance_name: str,
 async def platform_list_ips(adapter, *, filter: str | None = None) -> dict:
     """List BD cells in the open design (query atom).
 
-    Tcl: get_bd_cells -filter {filter} (or get_bd_cells * when no filter).
+    Tcl: get_bd_cells -filter {filter} (or get_bd_cells * when no filter),
+    printed with puts (the Tcl bridge captures stdout only — D8).
     Output is split on whitespace — Vivado prints the Tcl list one per line
     or space-separated depending on the channel.
     """
     if filter is not None and (not isinstance(filter, str) or not filter.strip()):
         raise PlatformError("filter must be a non-empty string", "INVALID_ARGUMENT")
-    cmd = f"get_bd_cells -filter {{{filter}}}" if filter else "get_bd_cells *"
+    cmd = f"puts [get_bd_cells -filter {{{filter}}}]" if filter else "puts [get_bd_cells *]"
     data = await _run_tcl(adapter, cmd, "list_ips")
     output = _tcl_output(data)
     ips = [tok for tok in re.split(r"\s+", output.strip()) if tok]
@@ -377,6 +401,106 @@ async def platform_connect_reset(adapter, *, source: str, targets: list) -> dict
                                           "count": len(clean)}}
 
 
+# Vivado 2023.1 create_bd_port direction letters (real-Vivado verified:
+# "IN"/"OUT"/"INOUT" are rejected with BD 41-78; only I/O/IO are accepted).
+_BD_DIRECTION_LETTERS = {"in": "I", "out": "O", "inout": "IO"}
+
+
+def _bd_port_names(adapter_output: str) -> set:
+    """Tokens of a ``get_bd_ports *`` / ``get_bd_intf_ports *`` listing,
+    normalized by stripping the leading '/' (Vivado prints object paths)."""
+    tokens = re.split(r"\s+", adapter_output.strip())
+    return {t.lstrip("/") for t in tokens if t}
+
+
+async def platform_make_external(adapter, *, port_name: str, source_pin: str,
+                                 direction: str | None = None,
+                                 width: int | None = None,
+                                 interface: bool = False) -> dict:
+    """Externalize a BD pin/interface as a top-level port (atom API).
+
+    Architecture §4.3.3 第五类 (D2). Two modes:
+      - ``interface=true``: the interface pin is resolved via ``-of_objects``
+        (bare / ``-filter`` intf-pin queries match nothing on real Vivado
+        2023.1 — D8) and externalized with ``make_bd_intf_pins_external``
+        (real-Vivado verified: ``make_bd_pins_external`` only applies to
+        regular pins — BD 5-407). Vivado derives the port name from the pin
+        (returned as the last path component of ``source_pin``).
+      - signal mode (default): ``create_bd_port -dir <I|O|IO> [-from w-1 -to
+        0] <port_name>`` then ``connect_bd_net [get_bd_pins <source_pin>]
+        [get_bd_ports <port_name>]``.
+    ``direction`` (in|out|inout) is required for signal mode; ``width``
+    >1 creates a vector port (omitted/1 → scalar). The created port's
+    existence is verified against the ``get_bd_ports *`` listing (name
+    queries match nothing on real Vivado — D8) and the port facts returned
+    (fail-closed EXTERNAL_PORT_CREATE_FAILED otherwise). Only admitted in
+    PLATFORM_DESIGN and never advances the stage.
+    """
+    if not isinstance(port_name, str) or not port_name.strip():
+        raise PlatformError("port_name must be a non-empty string", "INVALID_ARGUMENT")
+    if not isinstance(source_pin, str) or not source_pin.strip():
+        raise PlatformError("source_pin must be a non-empty string", "INVALID_ARGUMENT")
+    if not isinstance(interface, bool):
+        raise PlatformError("interface must be a boolean", "INVALID_ARGUMENT")
+
+    if interface:
+        resolve_tcl = (
+            f"set __src {{{source_pin}}}\n"
+            f"set __parts [split {{{source_pin}}} /]\n"
+            "set __ip [lindex $__parts 0]\n"
+            "set __pin {}\n"
+            "foreach __p [get_bd_intf_pins -quiet -of_objects "
+            "[get_bd_cells -quiet $__ip]] {\n"
+            "  if {[string trimleft $__p /] eq $__src} {\n"
+            "    set __pin $__p\n"
+            "    break\n"
+            "  }\n"
+            "}\n"
+            "if {$__pin eq \"\"} {\n"
+            f"  error \"INTF_PIN_NOT_FOUND:{{{source_pin}}}\"\n"
+            "}\n"
+            "make_bd_intf_pins_external $__pin")
+        await _run_tcl(adapter, resolve_tcl, "make_external")
+        derived = source_pin.rstrip("/").rsplit("/", 1)[-1]
+        verify = await _run_tcl(adapter, "puts [get_bd_intf_ports *]",
+                                 "verify_external_port")
+        if derived not in _bd_port_names(_tcl_output(verify)):
+            raise PlatformError(
+                f"External interface port for {source_pin} was not created",
+                "EXTERNAL_PORT_CREATE_FAILED")
+        return {"status": "success", "data": {
+            "port_name": derived, "source_pin": source_pin,
+            "interface": True, "direction": "interface"}}
+
+    if not isinstance(direction, str) or direction.strip().lower() \
+            not in _BD_DIRECTION_LETTERS:
+        raise PlatformError("direction must be one of in|out|inout",
+                            "INVALID_ARGUMENT")
+    d = direction.strip().lower()
+    if width is not None and (isinstance(width, bool) or not isinstance(width, int)
+                              or width <= 0):
+        raise PlatformError("width must be a positive integer", "INVALID_ARGUMENT")
+
+    parts = [f"create_bd_port -dir {_BD_DIRECTION_LETTERS[d]}"]
+    if width is not None and width > 1:
+        parts.append(f"-from {width - 1} -to 0")
+    parts.append(port_name)
+    cmd = " ".join(parts)
+    cmd += (f"\nconnect_bd_net [get_bd_pins {source_pin}] "
+            f"[get_bd_ports {port_name}]")
+    await _run_tcl(adapter, cmd, "make_external")
+
+    verify = await _run_tcl(adapter, "puts [get_bd_ports *]",
+                            "verify_external_port")
+    if port_name not in _bd_port_names(_tcl_output(verify)):
+        raise PlatformError(f"Port {port_name} was not created",
+                            "EXTERNAL_PORT_CREATE_FAILED")
+    return {"status": "success", "data": {
+        "port_name": port_name, "source_pin": source_pin,
+        "interface": False, "direction": d,
+        "width": width if width is not None else 1}}
+
+
 # ═══════════════════════════════════════════
 #  5. Address space
 # ═══════════════════════════════════════════
@@ -385,30 +509,129 @@ async def platform_set_address(adapter, *, segment: str, base,
                                size: int | None = None) -> dict:
     """Set a slave segment base address (and optional size) (atom API).
 
-    segment format: "my_slave_0/S_AXI". When ``size`` is given the matching
-    CONFIG.C_HIGHADDR is derived (base + size - 1) and written in the same
-    Tcl command.
+    segment format: ``"<ip>/<interface>"``, e.g. ``"my_slave_0/S_AXI"``. The
+    short form is resolved automatically to the real address segment (e.g.
+    ``"my_slave_0/S_AXI"`` → ``"my_slave_0/S_AXI/Reg"``) by querying
+    ``get_bd_addr_segs`` directly and, when no match, the child segments of
+    the named interface pin (B11 phase ③.1 D5). An unresolvable segment fails
+    closed. When ``size`` is given the matching CONFIG.C_HIGHADDR is derived
+    (base + size - 1) and written in the same Tcl command.
+
+    Note (D1): on Vivado 2023.1 the CONFIG.C_BASEADDR / C_HIGHADDR properties
+    of a BD address segment are read-only once the segment exists — explicit
+    set_property calls are silently rejected by the tool. The address
+    assignment path is ``platform_assign_addresses`` (assign_bd_address);
+    this atom remains for explicit override attempts and fails closed when the
+    Tcl rejects them.
     """
     if not isinstance(segment, str) or not segment.strip():
         raise PlatformError("segment must be a non-empty string", "INVALID_ARGUMENT")
     if base is None or (isinstance(base, str) and not base.strip()):
         raise PlatformError("base must be provided", "INVALID_ARGUMENT")
     base_str = str(base).strip()
-    lines = [f"set_property CONFIG.C_BASEADDR {{{base_str}}} "
-             f"[get_bd_addr_segs {{{segment}}}]"]
+    try:
+        base_int = int(base_str, 16) if base_str.lower().startswith("0x") else int(base_str, 0)
+    except ValueError:
+        raise PlatformError(f"Invalid base address: {base!r}", "INVALID_ARGUMENT")
+    lines = [
+        # D5: resolve "<ip>/<intf>" to the real segment name ("<ip>/<intf>/Reg")
+        # via get_bd_addr_segs, falling back to enumerating the interface pins
+        # of the named cell with -of_objects (bare/-filter intf-pin queries
+        # match nothing on real Vivado 2023.1 — D8) and taking the child
+        # segments of the matching interface pin. Unresolvable → hard Tcl
+        # error → TCL_ERROR (D6).
+        f"set __req {{{segment}}}\n"
+        "set __segs [get_bd_addr_segs -quiet $__req]\n"
+        "if {[llength $__segs] == 0} {\n"
+        f"  set __parts [split {{{segment}}} /]\n"
+        "  set __ip [lindex $__parts 0]\n"
+        "  set __intf [lindex $__parts 1]\n"
+        "  set __pins [get_bd_intf_pins -quiet -of_objects "
+        "[get_bd_cells -quiet $__ip]]\n"
+        "  set __segs {}\n"
+        "  foreach __p $__pins {\n"
+        "    if {[string trimleft $__p /] eq \"$__ip/$__intf\"} {\n"
+        "      set __segs [get_bd_addr_segs -quiet -of_objects $__p]\n"
+        "      break\n"
+        "    }\n"
+        "  }\n"
+        "}\n"
+        "if {[llength $__segs] == 0} {\n"
+        f"  error \"SEGMENT_NOT_FOUND:{{{segment}}}\"\n"
+        "}\n"
+        "set __seg [lindex $__segs 0]\n"
+        f"set_property CONFIG.C_BASEADDR {{{base_str}}} $__seg",
+    ]
     if size is not None:
         if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
             raise PlatformError("size must be a positive integer", "INVALID_ARGUMENT")
-        try:
-            base_int = int(base_str, 16) if base_str.lower().startswith("0x") else int(base_str, 0)
-        except ValueError:
-            raise PlatformError(f"Invalid base address: {base!r}", "INVALID_ARGUMENT")
         high = base_int + size - 1
-        lines.append(f"set_property CONFIG.C_HIGHADDR {{{hex(high)}}} "
-                     f"[get_bd_addr_segs {{{segment}}}]")
+        lines.append(f"set_property CONFIG.C_HIGHADDR {{{hex(high)}}} $__seg")
     await _run_tcl(adapter, "\n".join(lines), "set_address")
     return {"status": "success", "data": {"segment": segment, "base": base_str,
                                           "size": size}}
+
+
+# Per-master address map query, shared by platform_assign_addresses and
+# platform_export_manifest. Each line is "<master> <segment> <OFFSET> <RANGE>"
+# printed with puts (the Tcl bridge captures stdout only — D8).
+#
+# Verified against real Vivado 2023.1: bare `get_bd_intf_pins` / wildcard `*`
+# / `-filter` forms match NOTHING for bd pins — only `-of_objects` (on cells)
+# enumerates interface pins. The addressable (master-side) segments live under
+# the master intf pin and carry OFFSET/RANGE; segments without an OFFSET
+# (unassigned / slave-side) are skipped so the map reports only assigned
+# addresses. Master-side segment names look like
+# "processing_system7_0/Data/SEG_<ip>_Reg" — the parser extracts <ip>.
+_ADDRESS_MAP_QUERY_TCL = (
+    "foreach m [get_bd_intf_pins -quiet -of_objects [get_bd_cells -quiet *]] {\n"
+    "  foreach mseg [get_bd_addr_segs -quiet -of_objects $m] {\n"
+    "    set __off [get_property OFFSET $mseg]\n"
+    "    if {$__off ne \"\"} {\n"
+    "      puts \"[string trimleft $m /] [string trimleft $mseg /] $__off "
+    "[get_property RANGE $mseg]\"\n"
+    "    }\n"
+    "  }\n"
+    "}")
+
+
+async def platform_assign_addresses(adapter, *,
+                                    segments: list | None = None) -> dict:
+    """Auto-assign BD slave address segments (atom API, idempotent).
+
+    Architecture §4.3.3 第七类 (D1). Tcl:
+      - ``segments`` omitted → ``assign_bd_address`` (assign every unassigned
+        address segment in the design);
+      - ``segments`` given → ``assign_bd_address [get_bd_addr_segs {<seg>}]``
+        per entry (short segment names such as ``<ip>/S_AXI`` are resolved by
+        ``get_bd_addr_segs`` itself).
+    Returns the resulting address_map summary (per-master OFFSET/RANGE parsed
+    from get_bd_addr_segs output, same shape as platform_export_manifest).
+    Idempotent: already-assigned segments are a no-op and the returned map
+    reflects the current state. Only admitted in PLATFORM_DESIGN and never
+    advances the stage.
+    """
+    if segments is not None and (not isinstance(segments, list) or not segments):
+        raise PlatformError("segments must be a non-empty list", "INVALID_ARGUMENT")
+    if segments:
+        lines = []
+        for seg in segments:
+            if not isinstance(seg, str) or not seg.strip():
+                raise PlatformError("each segment must be a non-empty string",
+                                    "INVALID_ARGUMENT")
+            lines.append(
+                f"assign_bd_address [get_bd_addr_segs {{{seg.strip()}}}]")
+        await _run_tcl(adapter, "\n".join(lines), "assign_address")
+    else:
+        await _run_tcl(adapter, "assign_bd_address", "assign_address")
+    addr_data = await _run_tcl(adapter, _ADDRESS_MAP_QUERY_TCL,
+                               "get_address_map")
+    address_map = _parse_manifest_address_map(_tcl_output(addr_data))
+    return {"status": "success", "data": {
+        "address_map": address_map,
+        "assigned": bool(address_map),
+        "segments": segments,
+    }}
 
 
 # ═══════════════════════════════════════════
@@ -418,11 +641,15 @@ async def platform_set_address(adapter, *, segment: str, base,
 async def platform_validate(adapter) -> dict:
     """Validate the open Block Design (atom API).
 
-    Scans the validate_bd_design output for errors / critical warnings and
-    fails closed with BD_VALIDATION_FAILED when any are found.
+    Runs ``validate_bd_design -force`` — the ``-force`` flag invalidates the
+    tool's "already validated" cache so real errors / critical warnings always
+    surface on every call (B11 phase ③.1 D7: without it a second validate can
+    falsely pass while the design is still broken). Scans the output for
+    errors / critical warnings and fails closed with BD_VALIDATION_FAILED
+    when any are found.
     """
     try:
-        vdata = await _run_tcl(adapter, "validate_bd_design", "validate_bd")
+        vdata = await _run_tcl(adapter, "validate_bd_design -force", "validate_bd")
     except AdapterError as e:
         raise BdValidationError(f"validate_bd_design failed: {e}")
     vtxt = _tcl_output(vdata).lower()
@@ -434,6 +661,72 @@ async def platform_validate(adapter) -> dict:
     if issues:
         raise BdValidationError("; ".join(issues))
     return {"status": "success", "data": {"validation": "passed"}}
+
+
+async def platform_synthesize(adapter, *, jobs: int | None = None) -> dict:
+    """Run top-level synthesis so the exported XSA contains HDF (atom API).
+
+    Architecture §4.3.3 第八类 / B11 勘误 §4 (D3): ``write_hw_platform`` only
+    packs hardware handoff data (platform_bd.hwh, hwdef.xml, ps7_init.*) into
+    the XSA after the design is synthesized. The BD must first be set as the
+    synthesis top (real-Vivado verified: without it launch_runs fails with
+    "Top module not set for synthesis run"). Tcl:
+
+      set_property top platform_bd [current_fileset]
+      launch_runs synth_1 -jobs <N>
+      wait_on_run synth_1
+      open_run synth_1
+
+    The run STATUS is queried afterwards (``get_property STATUS [get_runs
+    synth_1]``) and a non-complete status fails closed with SYNTHESIS_FAILED.
+    WNS is reported when timing paths exist (an unconstrained platform BD
+    usually has none → wns=None). Long-running (SYNTH_TIMEOUT_S). Only
+    admitted in PLATFORM_DESIGN and never advances the stage.
+
+    ``jobs`` defaults to 1: real-Vivado verified on this install, a multi-IP
+    BD with ``-jobs > 1`` launches the IP OOC synthesis runs in parallel and
+    the extra concurrent vivado processes exceed the license's feature
+    capacity ("Failed to load feature 'core'"); ``-jobs 1`` runs them serially
+    and reliably completes. Callers may raise it on machines with enough
+    concurrent-license headroom.
+    """
+    if jobs is not None and (isinstance(jobs, bool) or not isinstance(jobs, int)
+                             or jobs <= 0):
+        raise PlatformError("jobs must be a positive integer", "INVALID_ARGUMENT")
+    n = jobs if jobs is not None else 1
+    cmd = ("set_property top platform_bd [current_fileset]\n"
+           f"launch_runs synth_1 -jobs {n}\n"
+           "wait_on_run synth_1\n"
+           "open_run synth_1")
+    try:
+        await _run_tcl(adapter, cmd, "synthesize", timeout=SYNTH_TIMEOUT_S)
+    except TclError as e:
+        # D6: a Tcl-level synthesis failure is SYNTHESIS_FAILED; an adapter
+        # failure (AdapterError) keeps ADAPTER_NOT_READY and propagates.
+        raise SynthesisError(f"launch_runs synth_1 failed: {e}")
+
+    status_data = await _run_tcl(adapter,
+                                 "puts [get_property STATUS [get_runs synth_1]]",
+                                 "synth_status")
+    status = _tcl_output(status_data).strip()
+    if "complete" not in status.lower():
+        raise SynthesisError(f"synth_1 status not complete: {status!r}")
+
+    wns = None
+    wns_data = await _run_tcl(adapter,
+        "if {[llength [get_timing_paths -quiet -setup -max_paths 1]] > 0} {\n"
+        "  puts [get_property SLACK [get_timing_paths -setup -max_paths 1]]\n"
+        "} else {\n"
+        "  puts N/A\n"
+        "}", "synth_wns")
+    wns_text = _tcl_output(wns_data).strip()
+    if wns_text and wns_text != "N/A":
+        try:
+            wns = float(wns_text)
+        except ValueError:
+            wns = None
+    return {"status": "success", "data": {
+        "run": "synth_1", "status": status, "wns": wns, "jobs": n}}
 
 
 async def platform_generate_wrapper(adapter, *, project_path: str) -> dict:
@@ -513,6 +806,11 @@ def _parse_manifest_address_map(tcl_output: str) -> dict:
     The OFFSET is normalized (``0x0000000040000000`` -> ``0x40000000``) so
     addresses are canonical 0x-prefixed hex in the published manifest. Lines
     with fewer than 4 tokens are ignored (fail-soft on partial output).
+
+    B11 ③.1 (D8, real-Vivado verified): the query reports master-side segment
+    names of the form ``processing_system7_0/Data/SEG_<ip>_Reg``; the map key
+    is the slave IP extracted from that name (falling back to the first path
+    component for the historical ``<ip>/<intf>/<seg>`` form).
     """
     amap = {}
     for line in tcl_output.splitlines():
@@ -520,7 +818,8 @@ def _parse_manifest_address_map(tcl_output: str) -> dict:
         if len(tokens) < 4:
             continue
         master, seg, offset, rng = tokens[0], tokens[1], tokens[2], tokens[3]
-        ip = seg.split("/")[0]
+        m = re.search(r"SEG_(.+)_Reg$", seg)
+        ip = m.group(1) if m else seg.split("/")[0].lstrip("/")
         base = offset
         if base.lower().startswith("0x"):
             try:
@@ -579,30 +878,32 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
     pp = str(Path(project_path).resolve())
 
     # 1. BD must be ready — fail closed when no design is open.
-    bd_data = await _run_tcl(adapter, "llength [get_bd_designs -quiet]",
+    bd_data = await _run_tcl(adapter, "puts [llength [get_bd_designs -quiet]]",
                              "count_bd_designs")
     if _tcl_output(bd_data).strip() == "0":
         raise ManifestError("No Block Design open — run platform_add_ps7 first")
 
-    # 2. IP list from the open BD.
-    ips_data = await _run_tcl(adapter, "get_bd_cells *", "list_bd_cells")
-    ip_list = [tok for tok in re.split(r"\s+", _tcl_output(ips_data).strip()) if tok]
+    # 2. IP list from the open BD. Results are printed with puts — the Tcl
+    #    bridge captures stdout only, never a bare command return value (D8).
+    #    Vivado prints object paths with a leading '/' — stripped so the
+    #    manifest carries plain cell names.
+    ips_data = await _run_tcl(adapter, "puts [get_bd_cells *]", "list_bd_cells")
+    ip_list = [tok.lstrip("/") for tok in
+               re.split(r"\s+", _tcl_output(ips_data).strip()) if tok]
 
     # 3. Address map: every master's segments (OFFSET / RANGE).
-    addr_data = await _run_tcl(adapter,
-        "foreach master [get_bd_intf_pins -quiet -filter {TYPE == master}] {\n"
-        "  foreach seg [get_bd_addr_segs -quiet -of_objects $master] {\n"
-        "    puts \"$master $seg [get_property OFFSET $seg] "
-        "[get_property RANGE $seg]\"\n"
-        "  }\n"
-        "}", "get_address_map")
+    addr_data = await _run_tcl(adapter, _ADDRESS_MAP_QUERY_TCL, "get_address_map")
     address_map = _parse_manifest_address_map(_tcl_output(addr_data))
 
     # 4. Clock tree: fan-out of the PS7 FCLK_CLK0 net (empty when absent).
+    #    Full pin paths ("<cell>/<pin>") are printed via the object's string
+    #    form trimmed of the leading '/' — B11 ③.1 D9 restores the B09
+    #    manifest readability that short pin names broke (verified: bd pins
+    #    have no PARENT property, so the path is taken from the object name).
     clk_data = await _run_tcl(adapter,
         "foreach p [get_bd_pins -quiet -of_objects [get_bd_nets -quiet "
         "-of_objects [get_bd_pins -quiet processing_system7_0/FCLK_CLK0]]] {\n"
-        "  puts [get_property NAME $p]\n"
+        "  puts [string trimleft $p /]\n"
         "}", "get_clock_tree")
     clk_pins = [tok for tok in re.split(r"\s+", _tcl_output(clk_data).strip()) if tok]
     clock_tree = {"FCLK_CLK0": clk_pins} if clk_pins else {}
@@ -708,8 +1009,11 @@ PLATFORM_ATOM_MAP: dict[str, object] = {
     "platform_connect_clock": platform_connect_clock,
     "platform_connect_reset": platform_connect_reset,
     "platform_set_address": platform_set_address,
+    "platform_assign_addresses": platform_assign_addresses,
+    "platform_make_external": platform_make_external,
     "platform_validate": platform_validate,
     "platform_generate_wrapper": platform_generate_wrapper,
+    "platform_synthesize": platform_synthesize,
     "platform_export_hardware": platform_export_hardware,
     "platform_export_manifest": platform_export_manifest,
 }
@@ -721,9 +1025,10 @@ PLATFORM_ATOM_TOOL_NAMES: frozenset = frozenset(PLATFORM_ATOM_MAP.keys())
 PLATFORM_ATOM_COMMAND_TOOL_NAMES: frozenset = frozenset({
     "platform_create_design", "platform_add_ps7", "platform_configure_ps7",
     "platform_add_ip", "platform_connect_interface", "platform_connect_clock",
-    "platform_connect_reset", "platform_set_address", "platform_validate",
-    "platform_generate_wrapper", "platform_export_hardware",
-    "platform_export_manifest",
+    "platform_connect_reset", "platform_set_address",
+    "platform_assign_addresses", "platform_make_external",
+    "platform_validate", "platform_generate_wrapper", "platform_synthesize",
+    "platform_export_hardware", "platform_export_manifest",
 })
 
 # query atoms (read directly by the dispatcher query handlers)
@@ -741,8 +1046,11 @@ PLATFORM_ATOM_CONTEXT_ARGS: dict[str, tuple] = {
     "platform_connect_clock": (),
     "platform_connect_reset": (),
     "platform_set_address": (),
+    "platform_assign_addresses": (),
+    "platform_make_external": (),
     "platform_validate": (),
     "platform_generate_wrapper": ("project_path",),
+    "platform_synthesize": (),
     "platform_export_hardware": ("project_path",),
     # board_id + board_profile_sha256 come from the session context; the atom
     # needs them to build the manifest's config_files / board profile fields.
@@ -750,8 +1058,8 @@ PLATFORM_ATOM_CONTEXT_ARGS: dict[str, tuple] = {
 }
 
 # per-tool outer wait (s). Must exceed the adapter's run_tcl default
-# (CALL_TOOL_TIMEOUT=30s + bridge overhead). Project / BD / XSA operations
-# are the slow ones; the rest are fast single-command sends.
+# (CALL_TOOL_TIMEOUT=30s + bridge overhead). Project / BD / XSA / synthesis
+# operations are the slow ones; the rest are fast single-command sends.
 PLATFORM_ATOM_TIMEOUT: dict[str, float] = {
     "platform_create_design": 300.0,
     "platform_add_ps7": 180.0,
@@ -761,8 +1069,14 @@ PLATFORM_ATOM_TIMEOUT: dict[str, float] = {
     "platform_connect_clock": 60.0,
     "platform_connect_reset": 60.0,
     "platform_set_address": 60.0,
+    "platform_assign_addresses": 120.0,
+    "platform_make_external": 60.0,
     "platform_validate": 180.0,
     "platform_generate_wrapper": 180.0,
+    # top-level BD synthesis (launch_runs synth_1 → wait_on_run synth_1 →
+    # open_run synth_1) can legitimately run several minutes; the outer wait
+    # must exceed the run_tcl timeout (SYNTH_TIMEOUT_S = 1800).
+    "platform_synthesize": 1860.0,
     "platform_export_hardware": 180.0,
     "platform_export_manifest": 60.0,
 }

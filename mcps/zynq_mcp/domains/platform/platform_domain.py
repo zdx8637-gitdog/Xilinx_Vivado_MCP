@@ -27,6 +27,18 @@ class AdapterError(PlatformError):
     def __init__(self, msg="Vivado adapter not available"):
         super().__init__(msg, "ADAPTER_NOT_READY")
 
+class TclError(PlatformError):
+    """B11 阶段③.1 (D6): the Vivado backend answered but the Tcl itself
+    failed. This is a TOOL_ERROR (reason_code TCL_ERROR), NOT ADAPTER_NOT_READY
+    — the backend is up; the command was rejected. Only genuine backend-not-
+    ready responses keep the ADAPTER_NOT_READY classification."""
+    def __init__(self, msg="Vivado Tcl command failed"):
+        super().__init__(msg, "TCL_ERROR")
+
+class SynthesisError(PlatformError):
+    def __init__(self, msg="Synthesis failed"):
+        super().__init__(msg, "SYNTHESIS_FAILED")
+
 class BdValidationError(PlatformError):
     def __init__(self, msg):
         super().__init__(msg, "BD_VALIDATION_FAILED")
@@ -132,7 +144,9 @@ _PLATFORM_STEP_BY_LABEL = {
 async def _run_tcl(adapter, command: str, label: str, timeout: float | None = None) -> dict:
     """Send Tcl command through adapter. Returns parsed success dict.
     Cold-start: retries up to 6x with escalating delay.
-    All other failures: raises AdapterError with the error message.
+    Other failures: raises TclError (the backend answered but the Tcl failed —
+    D6, reason_code TCL_ERROR) except for genuine backend-unready responses,
+    which raise AdapterError (reason_code ADAPTER_NOT_READY).
     Callers interpret the result text for validation/export errors.
     ``timeout`` (seconds) is optional. When set it is forwarded to the old
     server's run_tcl tool (completion-marker wait) AND to the adapter
@@ -169,9 +183,23 @@ async def _run_tcl(adapter, command: str, label: str, timeout: float | None = No
         if "cold start" in msg.lower() or rc == "VIVADO_COLD_START":
             await _asyncio.sleep(20.0 + attempt * 10.0)
             continue
-        # Non-cold-start error: raise as AdapterError (caller maps to domain error)
-        raise AdapterError(msg)
+        # B11 阶段③.1 (D6): a Tcl-level failure is a TOOL_ERROR, not an
+        # ADAPTER_NOT_READY — the backend is up and answered (it rejected the
+        # command). Only genuine backend-unready responses keep the
+        # ADAPTER_NOT_READY classification.
+        if rc in _BACKEND_NOT_READY_REASON_CODES:
+            raise AdapterError(msg)
+        raise TclError(f"{label}: {msg}")
     raise AdapterError(f"'{label}': Vivado cold start not resolved")
+
+
+# B11 阶段③.1 (D6): reason codes that genuinely mean the Vivado backend is not
+# ready (vs. a Tcl-level error from a healthy backend).
+_BACKEND_NOT_READY_REASON_CODES = frozenset({
+    "ADAPTER_NOT_READY", "BRIDGE_NOT_READY", "BACKEND_NOT_ACTIVE",
+    "VIVADO_PROCESS_DEAD", "BACKEND_PROCESS_DEAD", "VIVADO_NOT_FOUND",
+    "VIVADO_VERSION_MISMATCH",
+})
 
 
 def _top_bd_command(bd_name: str, action: str) -> str:

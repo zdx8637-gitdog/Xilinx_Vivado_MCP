@@ -49,6 +49,14 @@ _HEARTBEAT_READONLY_STATES = frozenset({
 _HEARTBEAT_REQUIRED_FIELDS = ["pid", "process_start_time", "executable_path",
                                "worker_generation", "instance_id"]
 
+# B11 phase ③.1 (D4): transient heartbeat failures are retried on the next
+# tick — they do NOT terminate the heartbeat loop. Only crash-class verdicts
+# (PID/identity failures, which already poisoned the worker via _do_crash)
+# break the loop.
+_HEARTBEAT_TRANSIENT_FAILURES = frozenset({
+    "LEDGER_READ_FAILED", "HEARTBEAT_WRITE_FAILED",
+})
+
 
 @dataclass
 class HeartbeatResult:
@@ -443,9 +451,48 @@ class SingleWorkerController:
                     break
                 result = await self.heartbeat_once()
                 if not result.ok:
-                    logger.error("Heartbeat failed: %s %s", result.reason_code, result.detail)
+                    # B11 阶段③.1 (D4): transient ledger failures (read/write)
+                    # are retried on the next tick — the loop must survive them
+                    # so an idle worker never dies of a momentary ledger hiccup.
+                    # Only crash-class verdicts (already persisted by _do_crash)
+                    # terminate the loop.
+                    if result.reason_code in _HEARTBEAT_TRANSIENT_FAILURES:
+                        self._last_heartbeat_error = (
+                            f"{result.reason_code}:{result.detail or 'retrying'}")
+                        logger.warning(
+                            "Heartbeat transient failure (%s), retrying next "
+                            "tick: %s", result.reason_code, result.detail)
+                        continue
+                    logger.error("Heartbeat failed: %s %s",
+                                 result.reason_code, result.detail)
                     break
         self._heartbeat_task = asyncio.ensure_future(_hb())
+
+    async def restart_heartbeat(self) -> dict:
+        """B11 阶段③.1 (D4): ALIVE+STALE revive — restart the heartbeat loop.
+
+        Cancels the (possibly dead/stalled) heartbeat task, starts a fresh
+        loop, and immediately runs one ``heartbeat_once()`` so the ledger
+        ``last_heartbeat_at`` timestamp is refreshed right away. Used by the
+        ``recover_execution`` service layer when the worker process is alive
+        but the heartbeat is stale (idle deadlock) — no ``close_session``
+        (and no backend kill) is required.
+        """
+        stopped = await self._stop_heartbeat()
+        if not stopped:
+            return {"success": False, "error": "heartbeat_task_did_not_stop"}
+        self._heartbeat_stopped = False
+        self._start_heartbeat()
+        result = await self.heartbeat_once()
+        if not result.ok:
+            return {"success": False,
+                    "error": f"heartbeat_once failed: {result.reason_code}: "
+                             f"{result.detail}",
+                    "reason_code": result.reason_code,
+                    "worker_state": result.worker_state}
+        return {"success": True, "heartbeat_ok": True,
+                "worker_state": result.worker_state,
+                "ledger_persisted": result.ledger_persisted}
 
     async def _stop_heartbeat(self) -> bool:
         if self._heartbeat_task is None:

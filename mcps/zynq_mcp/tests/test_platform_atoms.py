@@ -1,7 +1,7 @@
 """
-test_platform_atoms.py — B05-R2 Platform atomic APIs (unit, no EDA/hardware).
+test_platform_atoms.py — B05-R2 + B11 ③.1 Platform atomic APIs (unit, no EDA).
 
-Exercises the 12 production atom functions in
+Exercises the 17 production atom functions in
 mcps/zynq_mcp/domains/platform/platform_atoms.py against a fake adapter that
 records run_tcl calls. Verifies, per API:
   - the adapter is called with the correct Tcl command;
@@ -12,6 +12,12 @@ Also verifies registration/routing consistency (every atom is in
 capabilities.ALL_TOOLS and dispatcher._ALL_KNOWN) and that the CommandRunner
 injects the VivadoAdapter through the _pl_adapter marker without advancing
 the workflow stage.
+
+B11 phase ③.1 additions covered here: platform_assign_addresses /
+platform_make_external / platform_synthesize (D1/D2/D3), D5 segment
+resolution, D6 Tcl-error classification (TCL_ERROR vs ADAPTER_NOT_READY),
+D7 validate -force cache invalidation, D0 EMIO GPIO config keys, D8 puts
+capture contract, D9 full-path clock_tree.
 """
 import asyncio
 import json
@@ -34,7 +40,9 @@ from mcps.zynq_mcp.control.operation_registry import OperationRegistry
 from mcps.zynq_mcp.control.domain_runner import (
     CommandRunner, DomainExecutionMutex,
 )
-from mcps.zynq_mcp.domains.platform.platform_domain import PlatformError
+from mcps.zynq_mcp.domains.platform.platform_domain import (
+    PlatformError, TclError,
+)
 from mcps.zynq_mcp.domains.platform.platform_atoms import (
     PLATFORM_ATOM_MAP, PLATFORM_ATOM_TOOL_NAMES,
     PLATFORM_ATOM_COMMAND_TOOL_NAMES, PLATFORM_ATOM_QUERY_TOOL_NAMES,
@@ -42,8 +50,9 @@ from mcps.zynq_mcp.domains.platform.platform_atoms import (
     platform_add_ps7, platform_configure_ps7,
     platform_add_ip, platform_list_ips,
     platform_connect_interface, platform_connect_clock, platform_connect_reset,
-    platform_set_address, platform_validate,
-    platform_generate_wrapper, platform_export_hardware, platform_export_manifest,
+    platform_set_address, platform_assign_addresses, platform_make_external,
+    platform_validate, platform_generate_wrapper, platform_synthesize,
+    platform_export_hardware, platform_export_manifest,
 )
 
 PROJECT_ROOT = str(Path(__file__).resolve().parents[3])  # D:/fpgaproject
@@ -79,6 +88,21 @@ class _RaisingAdapter:
 
     async def call_tool(self, name, arguments, *, timeout=30.0, session_id=None):
         raise self._exc
+
+
+class _ErrorAdapter:
+    """call_tool returns a status=error response — exercises the _run_tcl
+    error-classification path (D6: TclError vs AdapterError)."""
+
+    def __init__(self, message, reason_code=None):
+        self._message = message
+        self._reason_code = reason_code
+
+    async def call_tool(self, name, arguments, *, timeout=30.0, session_id=None):
+        details = {"reason_code": self._reason_code} if self._reason_code else {}
+        return {"status": "error", "error": {
+            "code": "XSDM_EVAL_ERROR", "message": self._message,
+            "details": details}}
 
 
 def _last_tcl(adapter) -> str:
@@ -129,8 +153,10 @@ class TestGetStatus:
         assert out["data"]["project_name"] == "platform_bd"
         assert out["data"]["ip_count"] == 3
         assert out["data"]["has_project"] is True
-        assert adapter.calls[0][1]["command"] == "get_property NAME [current_project]"
-        assert adapter.calls[1][1]["command"] == "llength [get_bd_cells *]"
+        # D8: result-returning commands are printed with puts — the Tcl bridge
+        # captures stdout only, never a bare command return value.
+        assert adapter.calls[0][1]["command"] == "puts [get_property NAME [current_project]]"
+        assert adapter.calls[1][1]["command"] == "puts [llength [get_bd_cells *]]"
 
     @pytest.mark.asyncio
     async def test_empty_project_reports_no_project(self):
@@ -203,6 +229,21 @@ class TestConfigurePs7:
             await platform_configure_ps7(_FakeAdapter(), config={"bogus": 1})
         assert ei.value.reason_code == "INVALID_ARGUMENT"
 
+    @pytest.mark.asyncio
+    async def test_emio_gpio_nested_dict_d0(self):
+        """D0: config.gpio {emio_enable, width, io} maps to the EMIO GPIO PCW
+        properties (PCW_EN_EMIO_GPIO / PCW_GPIO_EMIO_GPIO_WIDTH /
+        PCW_GPIO_EMIO_GPIO_IO)."""
+        adapter = _FakeAdapter()
+        out = await platform_configure_ps7(adapter, config={
+            "gpio": {"emio_enable": True, "width": 64, "io": "MIO 0..63"}})
+        assert out["data"]["updated"] == ["gpio_emio_enable", "gpio_width",
+                                          "gpio_io"]
+        tcl = _last_tcl(adapter)
+        assert "CONFIG.PCW_EN_EMIO_GPIO {1}" in tcl
+        assert "CONFIG.PCW_GPIO_EMIO_GPIO_WIDTH {64}" in tcl
+        assert "CONFIG.PCW_GPIO_EMIO_GPIO_IO {1}" in tcl
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  3. IP management
@@ -217,7 +258,8 @@ class TestAddIp:
             properties={"C_GPIO_WIDTH": 4, "C_ALL_OUTPUTS": 1})
         assert out["status"] == "success"
         assert out["data"]["already_exists"] is False
-        assert adapter.calls[0][1]["command"] == "llength [get_bd_cells -quiet axi_gpio_led]"
+        # D8: the existence check prints its result (stdout-capture contract).
+        assert adapter.calls[0][1]["command"] == "puts [llength [get_bd_cells -quiet axi_gpio_led]]"
         tcl = _last_tcl(adapter)
         assert "create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 axi_gpio_led" in tcl
         assert "set_property -dict" in tcl and "C_GPIO_WIDTH {4}" in tcl
@@ -252,14 +294,15 @@ class TestListIps:
         assert out["status"] == "success"
         assert out["data"]["ips"] == ["processing_system7_0", "smartconnect_0", "axi_gpio_led"]
         assert out["data"]["count"] == 3
-        assert _last_tcl(adapter) == "get_bd_cells *"
+        # D8: printed with puts (stdout-capture contract).
+        assert _last_tcl(adapter) == "puts [get_bd_cells *]"
 
     @pytest.mark.asyncio
     async def test_returns_cells_with_filter(self):
         adapter = _FakeAdapter([{"output": "axi_gpio_led"}])
         out = await platform_list_ips(adapter, filter="VLNV =~ *axi_gpio*")
         assert out["data"]["ips"] == ["axi_gpio_led"]
-        assert _last_tcl(adapter) == "get_bd_cells -filter {VLNV =~ *axi_gpio*}"
+        assert _last_tcl(adapter) == "puts [get_bd_cells -filter {VLNV =~ *axi_gpio*}]"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -356,8 +399,14 @@ class TestSetAddress:
             segment="axi_gpio_led/S_AXI", base="0x41200000")
         assert out["status"] == "success"
         tcl = _last_tcl(adapter)
-        assert "set_property CONFIG.C_BASEADDR {0x41200000}" in tcl
-        assert "get_bd_addr_segs {axi_gpio_led/S_AXI}" in tcl
+        # D5: the short segment is resolved via get_bd_addr_segs (direct match
+        # first, then the interface pin's child segments), then set_property
+        # targets the resolved segment object.
+        assert "set __req {axi_gpio_led/S_AXI}" in tcl
+        assert "set __segs [get_bd_addr_segs -quiet $__req]" in tcl
+        assert 'get_bd_intf_pins -quiet -of_objects [get_bd_cells -quiet $__ip]' in tcl
+        assert 'error "SEGMENT_NOT_FOUND:{axi_gpio_led/S_AXI}"' in tcl
+        assert "set_property CONFIG.C_BASEADDR {0x41200000} $__seg" in tcl
         assert "C_HIGHADDR" not in tcl
 
     @pytest.mark.asyncio
@@ -367,8 +416,8 @@ class TestSetAddress:
             segment="axi_gpio_led/S_AXI", base="0x41200000", size=65536)
         assert out["data"]["size"] == 65536
         tcl = _last_tcl(adapter)
-        assert "CONFIG.C_BASEADDR {0x41200000}" in tcl
-        assert "CONFIG.C_HIGHADDR {0x4120ffff}" in tcl
+        assert "set_property CONFIG.C_BASEADDR {0x41200000} $__seg" in tcl
+        assert "set_property CONFIG.C_HIGHADDR {0x4120ffff} $__seg" in tcl
 
     @pytest.mark.asyncio
     async def test_invalid_base_fails_closed(self):
@@ -376,6 +425,209 @@ class TestSetAddress:
             await platform_set_address(_FakeAdapter(),
                 segment="s/S_AXI", base="nothex", size=4)
         assert ei.value.reason_code == "INVALID_ARGUMENT"
+
+    @pytest.mark.asyncio
+    async def test_empty_segment_rejected(self):
+        with pytest.raises(PlatformError) as ei:
+            await platform_set_address(_FakeAdapter(), segment="", base="0x0")
+        assert ei.value.reason_code == "INVALID_ARGUMENT"
+
+
+class TestAssignAddresses:
+    @pytest.mark.asyncio
+    async def test_assigns_all_and_returns_address_map(self):
+        adapter = _FakeAdapter([
+            {"output": ""},  # assign_bd_address result
+            {"output": "processing_system7_0/M_AXI_GP0 axi_gpio_led/S_AXI/reg0 "
+                       "0x0000000040000000 64K"},  # address map query
+        ])
+        out = await platform_assign_addresses(adapter)
+        assert out["status"] == "success"
+        assert out["data"]["assigned"] is True
+        assert out["data"]["address_map"]["axi_gpio_led"]["base"] == "0x40000000"
+        assert adapter.calls[0][1]["command"] == "assign_bd_address"
+        # D8: the map query enumerates interface pins via -of_objects (bare /
+        # wildcard / -filter intf-pin forms match nothing on real Vivado) and
+        # prints master-side segments that carry an OFFSET.
+        tcl = adapter.calls[1][1]["command"]
+        assert "get_bd_intf_pins -quiet -of_objects [get_bd_cells -quiet *]" in tcl
+        assert "get_property OFFSET $mseg" in tcl
+        assert "string trimleft $m /" in tcl
+
+    @pytest.mark.asyncio
+    async def test_assigns_all_and_parses_master_side_segment_names(self):
+        """D8: real-Vivado master-side segment names look like
+        'processing_system7_0/Data/SEG_<ip>_Reg' — the parser extracts the
+        slave IP as the map key."""
+        from mcps.zynq_mcp.domains.platform.platform_atoms import (
+            _parse_manifest_address_map,
+        )
+        amap = _parse_manifest_address_map(
+            "processing_system7_0/M_AXI_GP0 "
+            "processing_system7_0/Data/SEG_axi_gpio_led_Reg "
+            "0x41200000 0x00010000")
+        assert amap["axi_gpio_led"]["base"] == "0x41200000"
+        assert amap["axi_gpio_led"]["range"] == "0x00010000"
+        assert amap["axi_gpio_led"]["master"] == "processing_system7_0/M_AXI_GP0"
+
+    @pytest.mark.asyncio
+    async def test_assigns_explicit_segments(self):
+        adapter = _FakeAdapter([{"output": ""}, {"output": ""}])
+        out = await platform_assign_addresses(adapter,
+            segments=["axi_gpio_led/S_AXI", "other_0/S_AXI"])
+        assert out["status"] == "success"
+        tcl = adapter.calls[0][1]["command"]
+        assert tcl == ("assign_bd_address [get_bd_addr_segs {axi_gpio_led/S_AXI}]\n"
+                       "assign_bd_address [get_bd_addr_segs {other_0/S_AXI}]")
+
+    @pytest.mark.asyncio
+    async def test_empty_segments_list_rejected(self):
+        with pytest.raises(PlatformError) as ei:
+            await platform_assign_addresses(_FakeAdapter(), segments=[])
+        assert ei.value.reason_code == "INVALID_ARGUMENT"
+
+    @pytest.mark.asyncio
+    async def test_no_adapter_fails_closed(self):
+        with pytest.raises(PlatformError) as ei:
+            await platform_assign_addresses(None)
+        assert ei.value.reason_code == "ADAPTER_NOT_READY"
+
+
+class TestMakeExternal:
+    @pytest.mark.asyncio
+    async def test_signal_port_created_and_connected(self):
+        adapter = _FakeAdapter([{"output": ""}, {"output": "/DDR_addr /led_pins"}])
+        out = await platform_make_external(adapter,
+            port_name="led_pins", source_pin="axi_gpio_led/gpio_io_o",
+            direction="out", width=4)
+        assert out["status"] == "success"
+        assert out["data"]["port_name"] == "led_pins"
+        assert out["data"]["direction"] == "out"
+        assert out["data"]["width"] == 4
+        tcl = adapter.calls[0][1]["command"]
+        # real-Vivado verified: create_bd_port accepts I/O/IO direction
+        # letters only (BD 41-78 rejects IN/OUT/INOUT)
+        assert "create_bd_port -dir O -from 3 -to 0 led_pins" in tcl
+        assert ("connect_bd_net [get_bd_pins axi_gpio_led/gpio_io_o] "
+                "[get_bd_ports led_pins]") in tcl
+        # D8: port existence verified against the full listing (name queries
+        # match nothing on real Vivado)
+        assert adapter.calls[1][1]["command"] == "puts [get_bd_ports *]"
+
+    @pytest.mark.asyncio
+    async def test_scalar_port_when_width_omitted(self):
+        adapter = _FakeAdapter([{"output": ""}, {"output": "/sig"}])
+        out = await platform_make_external(adapter,
+            port_name="sig", source_pin="ip_0/pin_o", direction="in")
+        assert out["data"]["width"] == 1
+        assert "-from" not in adapter.calls[0][1]["command"]
+        assert "create_bd_port -dir I sig" in adapter.calls[0][1]["command"]
+
+    @pytest.mark.asyncio
+    async def test_interface_mode_uses_make_bd_intf_pins_external(self):
+        adapter = _FakeAdapter([{"output": ""}, {"output": "/DDR /FIXED_IO /M_AXI_GP0"}])
+        out = await platform_make_external(adapter,
+            port_name="M_AXI_GP0", source_pin="processing_system7_0/M_AXI_GP0",
+            interface=True)
+        assert out["status"] == "success"
+        assert out["data"]["interface"] is True
+        assert out["data"]["port_name"] == "M_AXI_GP0"
+        tcl = adapter.calls[0][1]["command"]
+        # real-Vivado verified: make_bd_pins_external only applies to regular
+        # pins (BD 5-407); interface pins use make_bd_intf_pins_external.
+        assert "make_bd_intf_pins_external" in tcl
+        assert "get_bd_intf_pins -quiet -of_objects [get_bd_cells -quiet $__ip]" in tcl
+        assert adapter.calls[1][1]["command"] == "puts [get_bd_intf_ports *]"
+
+    @pytest.mark.asyncio
+    async def test_interface_pin_missing_fails_closed(self):
+        adapter = _FakeAdapter([{"output": ""}, {"output": "/DDR"}])
+        with pytest.raises(PlatformError) as ei:
+            await platform_make_external(adapter,
+                port_name="NOPE", source_pin="processing_system7_0/NOPE",
+                interface=True)
+        assert ei.value.reason_code == "EXTERNAL_PORT_CREATE_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_invalid_direction_fails_closed(self):
+        with pytest.raises(PlatformError) as ei:
+            await platform_make_external(_FakeAdapter(),
+                port_name="p", source_pin="a/b", direction="sideways")
+        assert ei.value.reason_code == "INVALID_ARGUMENT"
+
+    @pytest.mark.asyncio
+    async def test_port_missing_fails_closed(self):
+        adapter = _FakeAdapter([{"output": ""}, {"output": "/DDR_addr"}])
+        with pytest.raises(PlatformError) as ei:
+            await platform_make_external(adapter,
+                port_name="p", source_pin="a/b", direction="out")
+        assert ei.value.reason_code == "EXTERNAL_PORT_CREATE_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_no_adapter_fails_closed(self):
+        with pytest.raises(PlatformError) as ei:
+            await platform_make_external(None,
+                port_name="p", source_pin="a/b", direction="out")
+        assert ei.value.reason_code == "ADAPTER_NOT_READY"
+
+
+class TestSynthesize:
+    @pytest.mark.asyncio
+    async def test_launches_waits_opens_and_reports_status(self):
+        adapter = _FakeAdapter([
+            {"output": ""},                          # launch/wait/open
+            {"output": "synth_design complete!"},    # run STATUS
+            {"output": "N/A"},                       # WNS (no timing paths)
+        ])
+        out = await platform_synthesize(adapter)
+        assert out["status"] == "success"
+        assert out["data"]["status"] == "synth_design complete!"
+        assert out["data"]["wns"] is None
+        assert out["data"]["jobs"] == 1  # serial OOC (license-safe default)
+        tcl = adapter.calls[0][1]["command"]
+        # the BD must be set as the synthesis top (real-Vivado verified)
+        assert "set_property top platform_bd [current_fileset]" in tcl
+        assert "launch_runs synth_1 -jobs 1" in tcl
+        assert "wait_on_run synth_1" in tcl
+        assert "open_run synth_1" in tcl
+        # the long synthesis eval carries the generous timeout
+        assert adapter.calls[0][2] > 1500
+        assert adapter.calls[1][1]["command"] == \
+            "puts [get_property STATUS [get_runs synth_1]]"
+
+    @pytest.mark.asyncio
+    async def test_custom_jobs(self):
+        adapter = _FakeAdapter([
+            {"output": ""}, {"output": "synth_design complete!"}, {"output": "N/A"}])
+        await platform_synthesize(adapter, jobs=2)
+        assert "launch_runs synth_1 -jobs 2" in adapter.calls[0][1]["command"]
+
+    @pytest.mark.asyncio
+    async def test_non_complete_status_fails_closed(self):
+        adapter = _FakeAdapter([
+            {"output": ""}, {"output": "synth_design errored!"}, {"output": "N/A"}])
+        with pytest.raises(PlatformError) as ei:
+            await platform_synthesize(adapter)
+        assert ei.value.reason_code == "SYNTHESIS_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_parses_wns_when_present(self):
+        adapter = _FakeAdapter([
+            {"output": ""}, {"output": "synth_design complete!"}, {"output": "-0.123"}])
+        out = await platform_synthesize(adapter)
+        assert out["data"]["wns"] == -0.123
+
+    @pytest.mark.asyncio
+    async def test_invalid_jobs_fails_closed(self):
+        with pytest.raises(PlatformError) as ei:
+            await platform_synthesize(_FakeAdapter(), jobs=0)
+        assert ei.value.reason_code == "INVALID_ARGUMENT"
+
+    @pytest.mark.asyncio
+    async def test_no_adapter_fails_closed(self):
+        with pytest.raises(PlatformError) as ei:
+            await platform_synthesize(None)
+        assert ei.value.reason_code == "ADAPTER_NOT_READY"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -391,7 +643,9 @@ class TestValidate:
         out = await platform_validate(adapter)
         assert out["status"] == "success"
         assert out["data"]["validation"] == "passed"
-        assert _last_tcl(adapter) == "validate_bd_design"
+        # D7: -force invalidates Vivado's "already validated" cache so real
+        # errors always surface on a re-validation.
+        assert _last_tcl(adapter) == "validate_bd_design -force"
 
     @pytest.mark.asyncio
     async def test_fails_on_error(self):
@@ -406,6 +660,27 @@ class TestValidate:
         with pytest.raises(PlatformError) as ei:
             await platform_validate(adapter)
         assert ei.value.reason_code == "BD_VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_second_validate_not_masked_by_cache(self):
+        """D7 regression: two consecutive validates against the same fake
+        backend; the second output carries a real critical warning (as a
+        re-validated design would) and must FAIL — the -force re-validation
+        never lets an earlier success mask a later real error."""
+        adapter = _FakeAdapter([
+            {"output": "INFO: [BD 41-231] Design validation successful"},
+            {"output": "CRITICAL WARNING: [BD 41-1356] Slave segment "
+                       "</axi_gpio_led/S_AXI/Reg> is not assigned into address "
+                       "space </processing_system7_0/Data>."},
+        ])
+        first = await platform_validate(adapter)
+        assert first["status"] == "success"
+        with pytest.raises(PlatformError) as ei:
+            await platform_validate(adapter)
+        assert ei.value.reason_code == "BD_VALIDATION_FAILED"
+        # both calls ran the cache-invalidating form
+        assert adapter.calls[0][1]["command"] == "validate_bd_design -force"
+        assert adapter.calls[1][1]["command"] == "validate_bd_design -force"
 
 
 class TestGenerateWrapper:
@@ -474,10 +749,11 @@ class TestExportManifest:
     """
 
     _OUTPUTS = [
-        {"output": "1"},  # count_bd_designs
+        {"output": "1"},  # count_bd_designs (puts form)
         {"output": "processing_system7_0 smartconnect_0 axi_gpio_led rst_ps7_50M"},
         {"output": "processing_system7_0/M_AXI_GP0 axi_gpio_led/S_AXI/reg0 "
                     "0x0000000041200000 64K"},
+        # D9: full pin paths ("<cell>/<pin>"), source pin first
         {"output": "processing_system7_0/FCLK_CLK0\n"
                     "processing_system7_0/M_AXI_GP0_ACLK\n"
                     "smartconnect_0/aclk\n"
@@ -520,12 +796,16 @@ class TestExportManifest:
             "processing_system7_0/M_AXI_GP0"
         assert "smartconnect_0/aclk" in out["data"]["clock_tree"]["FCLK_CLK0"]
         assert out["data"]["wrapper_name"] == "platform_bd_wrapper.v"
-        # Tcl queries were the 5 expected ones
+        # Tcl queries were the 5 expected ones (D8: result-returning queries
+        # are printed with puts — the bridge captures stdout only; intf pins
+        # are enumerated via -of_objects; D9: clock pins print full paths via
+        # the object's string form).
         cmds = [c[1]["command"] for c in adapter.calls]
-        assert cmds[0] == "llength [get_bd_designs -quiet]"
-        assert cmds[1] == "get_bd_cells *"
-        assert "get_bd_addr_segs" in cmds[2] and "TYPE == master" in cmds[2]
+        assert cmds[0] == "puts [llength [get_bd_designs -quiet]]"
+        assert cmds[1] == "puts [get_bd_cells *]"
+        assert "get_bd_addr_segs" in cmds[2] and "-of_objects" in cmds[2]
         assert "FCLK_CLK0" in cmds[3]
+        assert "string trimleft $p /" in cmds[3]  # D9: full pin paths
         assert cmds[4] == "puts [version -short]"
         # the persisted manifest is a valid platform manifest
         with open(out["data"]["manifest_path"], encoding="utf-8") as f:
@@ -634,16 +914,66 @@ class TestExportManifest:
         assert ei.value.reason_code == "ADAPTER_NOT_READY"
 
 
+class TestTclErrorClassification:
+    """D6: a Tcl-level failure from a healthy backend is TOOL_ERROR/TCL_ERROR,
+    never ADAPTER_NOT_READY. ADAPTER_NOT_READY is reserved for genuine
+    backend-unready responses."""
+
+    @pytest.mark.asyncio
+    async def test_tcl_error_maps_to_tcl_error(self):
+        adapter = _ErrorAdapter(
+            "ERROR: [Common 17-39] 'create_bd_cell' failed due to earlier errors")
+        with pytest.raises(TclError) as ei:
+            await platform_add_ip(adapter,
+                vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_led")
+        assert ei.value.reason_code == "TCL_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_tcl_error_with_bridge_rc_maps_to_tcl_error(self):
+        adapter = _ErrorAdapter("ERROR: [BD 41-79] Specified object already exists",
+                                reason_code="XSDM_TCL_ERROR")
+        with pytest.raises(TclError) as ei:
+            await platform_add_ip(adapter,
+                vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_led")
+        assert ei.value.reason_code == "TCL_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_backend_not_ready_keeps_adapter_not_ready(self):
+        adapter = _ErrorAdapter("Vivado backend not active",
+                                reason_code="BACKEND_NOT_ACTIVE")
+        with pytest.raises(PlatformError) as ei:
+            await platform_add_ip(adapter,
+                vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_led")
+        assert ei.value.reason_code == "ADAPTER_NOT_READY"
+
+    @pytest.mark.asyncio
+    async def test_local_fn_maps_tcl_error_to_tool_error_envelope(self):
+        """D6 end-to-end envelope: the dispatcher local executor turns a Tcl
+        error into TOOL_ERROR + reason_code TCL_ERROR (the old mislabeled
+        ADAPTER_NOT_READY is gone for Tcl failures)."""
+        from mcps.zynq_mcp.dispatcher import _make_platform_atom_local_fn
+        local_fn = _make_platform_atom_local_fn("platform_add_ip")
+        adapter = _ErrorAdapter("ERROR: [Common 17-39] 'create_bd_cell' failed")
+        out = await local_fn(adapter,
+            vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_led")
+        assert out["status"] == "error"
+        assert out["error"]["code"] == "TOOL_ERROR"
+        assert out["error"]["details"]["reason_code"] == "TCL_ERROR"
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Registration / routing consistency (production sources)
 # ═══════════════════════════════════════════════════════════════════
 
 class TestRegistrationConsistency:
-    def test_atom_count_is_14(self):
-        assert len(PLATFORM_ATOM_TOOL_NAMES) == 14
-        assert len(PLATFORM_ATOM_MAP) == 14
+    def test_atom_count_is_17(self):
+        # B11 ③.1: 14 B05-R2 atoms + assign_addresses/make_external/synthesize
+        assert len(PLATFORM_ATOM_TOOL_NAMES) == 17
+        assert len(PLATFORM_ATOM_MAP) == 17
         assert PLATFORM_ATOM_COMMAND_TOOL_NAMES | PLATFORM_ATOM_QUERY_TOOL_NAMES \
             == PLATFORM_ATOM_TOOL_NAMES
+        assert len(PLATFORM_ATOM_COMMAND_TOOL_NAMES) == 15
+        assert len(PLATFORM_ATOM_QUERY_TOOL_NAMES) == 2
 
     def test_every_atom_registered_in_capabilities(self):
         from mcps.zynq_mcp.control.capabilities import ALL_TOOLS
@@ -730,7 +1060,7 @@ class TestCommandRunnerInjection:
             l2 = await self._wait_terminal(g, lp, oid)
             assert l2 is not None
             assert l2.previous_operation["status"] == OP_SUCCEEDED
-            assert fake_adapter.calls[0][1]["command"] == "llength [get_bd_cells -quiet axi_gpio_led]"
+            assert fake_adapter.calls[0][1]["command"] == "puts [llength [get_bd_cells -quiet axi_gpio_led]]"
             assert "create_bd_cell" in fake_adapter.calls[1][1]["command"]
             # next_stage=None -> workflow stage stays PLATFORM_DESIGN
             assert l2.context["current_stage"] == "PLATFORM_DESIGN"
@@ -867,7 +1197,7 @@ class TestExportManifestCommandDispatch:
             assert l2 is not None
             assert l2.previous_operation["status"] == OP_SUCCEEDED
             # the atom received the session context keys via injection
-            assert fake_adapter.calls[0][1]["command"] == "llength [get_bd_designs -quiet]"
+            assert fake_adapter.calls[0][1]["command"] == "puts [llength [get_bd_designs -quiet]]"
             # the persisted manifest used the injected board_profile_sha256
             mdir = proj / "manifests" / "platform"
             assert mdir.is_dir()
@@ -973,7 +1303,7 @@ class TestDispatcherQueryPath:
             assert data["data"]["project_name"] == "proj_x"
             assert data["data"]["ip_count"] == 2
             # the adapter was started via the worker controller and run_tcl sent
-            assert adapter.calls[0][1]["command"] == "get_property NAME [current_project]"
+            assert adapter.calls[0][1]["command"] == "puts [get_property NAME [current_project]]"
         finally:
             g.release_owner_lock(); shutil.rmtree(str(rt), ignore_errors=True)
 
@@ -986,7 +1316,7 @@ class TestDispatcherQueryPath:
             data = json.loads(msgs[0].text)
             assert data["status"] == "success"
             assert data["data"]["ips"] == ["axi_gpio_led"]
-            assert adapter.calls[0][1]["command"] == "get_bd_cells -filter {VLNV =~ *gpio*}"
+            assert adapter.calls[0][1]["command"] == "puts [get_bd_cells -filter {VLNV =~ *gpio*}]"
         finally:
             g.release_owner_lock(); shutil.rmtree(str(rt), ignore_errors=True)
 

@@ -77,6 +77,28 @@
 - 5 处 `==101` 计数断言全部更新为 `==100`；`evaluate_observation` 的 pass/fail marker 改为必填（缺省即 INVALID_ARGUMENT 负路径保留）；新增 stage 推进正/负路径测试 3 个（test_platform_atoms.py）。
 - 机械门禁：`.mcp.json` SHA256=`d8e397af03b5b032f21d0aa967086f0c78b33c87b76f2e9898ae0a144df7de02`（不变）；生产代码 GPIO 残留仅历史注释 + templates.py 保留项（勘误 §8 残留清单）；git 提交见交付汇报。
 
+### 阶段③.1 整改轮记录（2026-08-14 用户批准，执行完成）
+
+阶段③ Agent1 白盒自测暴露 4 个 P1（D1 地址分配、D2 BD 端口外部化、D3 XSA
+HDF、D4 空闲心跳死锁）与 6 个 P2（D0/D5/D6/D7/D8/D9）。本整改轮已执行：
+- **P1 修复**：新增 3 个平台原子 `platform_assign_addresses` /
+  `platform_make_external` / `platform_synthesize`（工具 100→103，platform
+  域 14→17）；D4 心跳模型改为「每次心跳索要进程：进程在→刷新计时；进程不
+  在→累计超时」——瞬时失败（LEDGER_READ_FAILED / HEARTBEAT_WRITE_FAILED）
+  不再终止心跳循环；准入 P5 改为索要进程（alive+身份一致时心跳陈旧不阻断，
+  双门禁 execution_gate / domain_runner 同步）；`recover_execution` 增加
+  ALIVE+STALE 心跳复活路径（`restart_heartbeat` + recovery_log
+  heartbeat_revive，无需 close_session）。
+- **P2 修复**：D5 段名短名解析、D6 Tcl 错误归 TOOL_ERROR/TCL_ERROR（不再误报
+  ADAPTER_NOT_READY）、D7 validate `-force` 防缓存假阳性、D0 EMIO GPIO 配置
+  键；D8 根因定位为 Tcl 桥只捕获 stdout（命令返回值不回显）→ 查询原子全部
+  `puts` 包装修复（ip_list/address_map/幂等 add_ip 恢复真实）；D9 clock_tree
+  输出完整引脚路径。
+- **记录**：逐条 现象/根因/修复位置/测试名/状态见
+  `docs/development/mcp/B11_remediation_round_report.md`（新建）；回归数字、
+  host_live 专项、变更文件与 SHA256、`.mcp.json` 不变证据、git 提交见该报告。
+- 修复后阶段③白盒自测由**全新会话**重跑（阶段⑥门禁 6）。
+
 ### 阶段③ Agent1 白盒自测
 
 **交付**：Agent1 仅用新框架 Skill + 6-LED 需求文档 + 公开 zynq_mcp 实现完整流程（Platform 原子序列 → PL 构建 → PS 软件 → 一致性 → JTAG 部署 → 观测判定），自证「Skill 零 GPIO 字样仍可完成 GPIO 考题」。

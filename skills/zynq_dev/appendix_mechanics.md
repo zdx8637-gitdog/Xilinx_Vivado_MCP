@@ -95,6 +95,13 @@ Manifest 全部由 MCP **自动发布**，智能体不得手工生成/修改。
 构建（每个原子独立可观测、可恢复、不推进 stage）。IP 选型、配置、连线、地址
 全部来自 S3 决策与需求文档（占位符）。
 
+**BD 内步骤顺序**：create → add → connect → **assign（地址分配）** →
+**make_external（端口外部化）** → validate → wrapper → **synthesize（合成）** →
+export（XSA → Manifest）。**S3/S5 决策说明：地址分配与端口外部化必须在导出
+（export_hardware / export_manifest）前完成**——未分配的 slave 段会使
+validate 报真实告警、PS 域无法寻址；未外部化的端口不会出现在 wrapper/XSA
+中；不合成则 XSA 缺 HDF，PS 域 `ps_create_platform` 必然失败。
+
 | # | 工具 | 参数（占位符） | 成功条件 |
 |---|------|----------------|----------|
 | 1 | `platform_create_design` | `{"name": "<DESIGN_NAME>", "part": "<PART>"}` | Operation SUCCEEDED |
@@ -104,13 +111,17 @@ Manifest 全部由 MCP **自动发布**，智能体不得手工生成/修改。
 | 5 | `platform_connect_interface` | `{"source": "<IF_SOURCE>", "destination": "<IF_DEST>"}` | SUCCEEDED |
 | 6 | `platform_connect_clock` | `{"source": "<CLK_SOURCE>", "targets": ["<CLK_TARGET>", ...]}` | SUCCEEDED |
 | 7 | `platform_connect_reset` | `{"source": "<RST_SOURCE>", "targets": ["<RST_TARGET>", ...]}` | SUCCEEDED（极性不自检，由决策者选对引脚） |
-| 8 | `platform_set_address` | `{"segment": "<SEGMENT>", "base": "<BASE_ADDRESS>"}` | SUCCEEDED；地址来自 S3 规划 |
-| 9 | `platform_validate` | `{}` | 无 error / critical warning |
-| 10 | `platform_generate_wrapper` | `{}` | 记录 `wrapper_rel`（S5 PL 用） |
-| 11 | `platform_export_hardware` | `{"path": "<XSA_PATH>"}` | XSA 存在且 SHA256 校验 |
-| 12 | `platform_export_manifest` | `{}` | Manifest 自动发布；记 `platform_revision` 与 `address_map` |
+| 8 | `platform_set_address` | `{"segment": "<SEGMENT>", "base": "<BASE_ADDRESS>"}` | SUCCEEDED；`<SEGMENT>` 支持 `<ip>/<INTF>` 短名（自动解析到真实段名 `<ip>/<INTF>/Reg`）；地址最终落实以 assign 为准 |
+| 9 | `platform_assign_addresses` | `{"segments": [<SEGMENT_LIST>]}`（可选；缺省=全部未分配段） | 返回**非空** `address_map`（每 master OFFSET/RANGE）；幂等 |
+| 10 | `platform_make_external` | `{"port_name": "<PORT>", "source_pin": "<IP>/<PIN>", "direction": "in|out|inout", "width": <W>}`；接口类传 `"interface": true` | 端口已创建并连接；wrapper 中将出现该端口 |
+| 11 | `platform_validate` | `{}` | 无 error / critical warning（`-force` 强制重验，防止缓存假阳性） |
+| 12 | `platform_generate_wrapper` | `{}` | 记录 `wrapper_rel`（S5 PL 用）；wrapper 含已外部化的端口 |
+| 13 | `platform_synthesize` | `{"jobs": <N>}`（可选） | 运行 STATUS 含 complete；**XSA 才含 HDF** |
+| 14 | `platform_export_hardware` | `{"path": "<XSA_PATH>"}` | XSA 存在且 SHA256 校验；**必须已在 synthesize 之后** |
+| 15 | `platform_export_manifest` | `{}` | Manifest 自动发布；记 `platform_revision` 与 `address_map` |
 
-内层时限按公开能力上限；外层 `wait_operation` 超时 = 内层 + 30s。
+内层时限按公开能力上限；外层 `wait_operation` 超时 = 内层 + 30s（合成步给足
+预算：`platform_synthesize` 内层可达 1800s）。
 
 ## 4. PL 构建链
 

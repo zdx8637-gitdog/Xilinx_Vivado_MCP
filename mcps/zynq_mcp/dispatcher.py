@@ -29,6 +29,7 @@ from mcps.zynq_mcp.control.execution_ledger import (
     ChannelBusyError, LedgerWriteError, LedgerWorkspaceMismatchError,
 )
 from mcps.zynq_mcp.control.execution_gate import preflight_mutator, _parse_iso
+from mcps.zynq_mcp.control.process_guard import is_pid_alive
 from mcps.zynq_mcp.control.operation_service import (
     InFlightDuplicateError, TerminalDuplicateError, request_signature,
     operation_public_view, channel_busy_details,
@@ -181,7 +182,7 @@ class ZynqDispatcher:
             if tool_name == "close_session":
                 return _text(await _close_session_atomic(arguments, self))
             if tool_name == "recover_execution":
-                return _text(_recover_execution(self))
+                return _text(await _recover_execution(self))
             # B06: PS domain tools route to _dispatch_ps (local, bridge-based)
             if tool_name.startswith("ps_"):
                 return _text(await _dispatch_ps(arguments, tool_name, self))
@@ -438,13 +439,125 @@ def _now_iso():
            f"{int(time.time()*1e6)%1000000:06d}Z"
 
 
-def _recover_execution(disp):
+def _alive_stale_revive_eligibility(ledger) -> bool:
+    """B11 阶段③.1 (D4): is this the ALIVE+STALE idle deadlock?
+
+    True when the worker process is alive, the lane is IDLE, there is no
+    non-terminal active operation, and the heartbeat is stale/missing (an idle
+    deadlock the old model could only escape via close_session). The recovery
+    service layer may then revive the controller's heartbeat loop instead of
+    refusing with RECOVERY_BLOCKED_WORKER_ALIVE.
+    """
+    w = ledger.worker or {}
+    pid = w.get("pid")
+    ao = ledger.active_operation
+    if ledger.execution_lane != EXECUTION_LANE_IDLE:
+        return False
+    if not (isinstance(pid, int) and not isinstance(pid, bool) and pid > 0):
+        return False
+    if w.get("state") in (WORKER_STATE_ABSENT, WORKER_STATE_DEAD):
+        return False
+    if not is_pid_alive(pid):
+        return False
+    if ao and ao.get("status") in OP_NON_TERMINAL:
+        # A live worker with a non-terminal active operation is still refused
+        # (RECOVERY_BLOCKED_WORKER_ALIVE preserved): never touch a worker that
+        # is mid-operation.
+        return False
+    hb = w.get("last_heartbeat_at")
+    if not hb:
+        # No heartbeat evidence at all — the loop is dead/never ran; reviving
+        # it is exactly the takeover this path exists for.
+        return True
+    try:
+        ts = _parse_iso(hb)
+        return ts <= 0 or (time.time() - ts) > 120.0
+    except Exception:
+        return True  # unparseable heartbeat counts as stale → revivable
+
+
+async def _revive_heartbeat(disp, ledger, op_id) -> dict:
+    """Revive a live-but-stale worker's heartbeat without closing the session.
+
+    Fail-closed: the revive is only possible when THIS controller actually
+    holds the worker (same PID). If the process is alive but not held by the
+    controller, no process operation is attempted — the caller gets the
+    original RECOVERY_BLOCKED_WORKER_ALIVE error (the only safe way out is
+    close_session). The recovery_log append stays atomic; the process
+    operation (restart_heartbeat) happens here in the service layer, never
+    inside a ledger mutator.
+    """
+    worker = getattr(disp, "_worker", None)
+    pid = (ledger.worker or {}).get("pid")
+    held = (worker is not None and getattr(worker, "has_worker", False)
+            and getattr(getattr(worker, "_adapter", None), "child_pid", None) == pid)
+    if not held:
+        return error(
+            f"Recovery blocked: worker process {pid} is alive but not held by "
+            "this controller — heartbeat cannot be revived; use close_session "
+            "to release the backend",
+            code="INTERNAL_ERROR",
+            details={"reason_code": "RECOVERY_BLOCKED_WORKER_ALIVE"}).to_dict()
+    try:
+        result = await worker.restart_heartbeat()
+    except Exception as e:
+        logger.exception("Heartbeat revive failed")
+        return error(f"Heartbeat revive failed: {e}", code="INTERNAL_ERROR",
+                     details={"reason_code": "HEARTBEAT_REVIVE_FAILED"}).to_dict()
+    if not result.get("success"):
+        return error(f"Heartbeat revive failed: {result.get('error')}",
+                     code="INTERNAL_ERROR",
+                     details={"reason_code": result.get("reason_code")
+                              or "HEARTBEAT_REVIVE_FAILED"}).to_dict()
+
+    def _log(l):
+        if not isinstance(l.recovery_log, list):
+            l.recovery_log = []
+        l.recovery_log.append({
+            "action": "heartbeat_revive", "result": "SUCCEEDED",
+            "timestamp": _now_iso(),
+            "worker_generation": (l.worker or {}).get("worker_generation", 0),
+            "recovery_op_id": op_id,
+        })
+        return l
+
+    try:
+        ledger = ledger_transaction(disp._guard, disp._ledger_path, _log)
+    except Exception as e:
+        return error(f"Heartbeat revived but recovery log write failed: {e}",
+                     code="INTERNAL_ERROR",
+                     details={"reason_code": "LEDGER_WRITE_FAILED"}).to_dict()
+    disp._ledger = ledger
+    return success({
+        "execution_lane": ledger.execution_lane,
+        "worker_state": ledger.worker.get("state", WORKER_STATE_ABSENT),
+        "worker_generation": ledger.worker.get("worker_generation", 0),
+        "heartbeat_revived": True,
+    }).to_dict()
+
+
+async def _recover_execution(disp):
     op_id = f"op-{uuid.uuid4().hex}"
-    try: ledger = ledger_transaction(disp._guard, disp._ledger_path, recovery_mutator(op_id))
+    # B11 阶段③.1 (D4): ALIVE+STALE takeover — worker process alive, lane
+    # IDLE, no active operation, heartbeat stale (idle deadlock). Revive the
+    # controller's heartbeat loop instead of refusing or forcing close_session.
+    # The recovery_mutator itself stays pure atomic; the process operation
+    # (restart_heartbeat) happens in this service layer.
+    try:
+        cur, _ = ledger_read_shared(
+            disp._guard, disp._ledger_path,
+            getattr(disp._guard, "workspace_id", None))
+    except Exception:
+        cur = None
+    if cur is not None and _alive_stale_revive_eligibility(cur):
+        return await _revive_heartbeat(disp, cur, op_id)
+    try:
+        ledger = ledger_transaction(disp._guard, disp._ledger_path, recovery_mutator(op_id))
     except ChannelBusyError as e:
         return error(f"Recovery blocked: {e.args[0]}", code="INTERNAL_ERROR",
                      details={"reason_code": e.args[0]}).to_dict()
-    except Exception as e: return error(str(e), code="INTERNAL_ERROR").to_dict()
+    except Exception as e:
+        return error(str(e), code="INTERNAL_ERROR").to_dict()
     disp._ledger = ledger
     return success({"execution_lane": ledger.execution_lane,
         "worker_state": ledger.worker.get("state", WORKER_STATE_ABSENT),
