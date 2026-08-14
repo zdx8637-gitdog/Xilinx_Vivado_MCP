@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）FPGA 开发框架。Claude 通过 MCP Server 操作 Vivado/XSim/Vitis 等 EDA 工具，按「三域四层 + Brick」计划增量构建。
 
 - 冻结顶层架构：[docs/architecture_ai_zynq7020.md](docs/architecture_ai_zynq7020.md) v2.3.1
-- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线）；B11 已立项（2026-08-14）：泛化框架黑盒验证——Skill/MCP 去 GPIO 化 + 6-LED 考题，阶段① 泛化 Skill 重写进行中。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；B11 规划：[docs/development/mcp/B11_plan.md](docs/development/mcp/B11_plan.md)）
+- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线）；B11 立项（2026-08-14）：泛化框架黑盒验证——Skill/MCP 去 GPIO 化 + 6-LED 考题，阶段①②已完成（泛化 Skill `skills/zynq_dev/` + MCP 101→100，勘误见 [B11_platform_generate_erratum.md](docs/development/mcp/B11_platform_generate_erratum.md)），阶段③ Agent1 白盒待启动。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；B11 规划：[docs/development/mcp/B11_plan.md](docs/development/mcp/B11_plan.md)）
 - Execution Observation：O1–O6 FROZEN，O7 R3 PASS，O8 冻结包已交付（2026-08-14）
 - 根目录是新的 core Git 仓库（分支 main，839 个文件）：基线 commit `4e0d148`，tag `o7r3-baseline-20260813` 锁定 O7 R3 基线；远端 origin = https://github.com/zdx8637-gitdog/Xilinx_Vivado_MCP（旧内容已按授权覆盖替换，原旧远程 HEAD `59f2abb` 已记录）。`Xilinx_Vivado_MCP/`、`Xilinx_Vitis_MCP/`、`zynq_platforms/` 三个旧仓库为 legacy/已出范围（保留在磁盘、各自独立且已停更的 Git 历史，不被新仓库跟踪）
 - 下面「AI Agent 驱动 Zynq-7020 项目规则」是冻结的工作纪律，任何实现/汇报必须遵守。
@@ -18,19 +18,19 @@ AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）
 # 主测试套件（必须从项目根目录运行，勿 cd 进 mcps/）
 python -m pytest mcps
 
-# 非硬件回归（跳过需 EDA 工具或硬件的测试）：1331 passed / 1 skipped / 37 deselected / 0 failed（约 211 秒；1 skipped 为 B02 POSIX-only）
+# 非硬件回归（跳过需 EDA 工具或硬件的测试）：1337 passed / 1 skipped / 38 deselected / 0 failed（约 204 秒；1 skipped 为 B02 POSIX-only）
 python -m pytest mcps -m "not host_live and not device_live"
 
 # 单个测试
 python -m pytest mcps/zynq_mcp/tests/test_r1_gate.py -k <test_name>
 
-# 机械门禁用的收集统计（当前 1369 collected）
+# 机械门禁用的收集统计（当前 1376 collected）
 python -m pytest mcps --collect-only -q
 
 # 列出所有 pytest marker
 python -m pytest mcps --markers
 
-# 按 marker 运行（host_live 共 33 个 = 需 Vivado/XSim；device_live 共 4 个 = 需 USB-UART）
+# 按 marker 运行（host_live 共 34 个 = 需 Vivado/XSim；device_live 共 4 个 = 需 USB-UART）
 python -m pytest mcps -m "host_live"
 ```
 
@@ -55,10 +55,10 @@ python -m pytest mcps -m "host_live"
 | `Xilinx_Vitis_MCP/` | legacy/已出范围（独立 Git 仓库，Vitis MCP 骨架，已停更，不被新 core 仓库跟踪） |
 | `zynq_platforms/` | legacy/已出范围（独立 Git 仓库，已停更，不被新 core 仓库跟踪）。含 `ax7020_base/` block design、构建输出、Vitis workspace、Tcl 脚本 |
 | `mcps/common/` | 公共契约：`board_package.py`（板卡配置包）、`board_profile.py`、`project_lock.py`、`revision.py`、`artifact_schema.py`、`env_probe.py`、`error_codes.py`、`tool_response.py`、`api_category.py`、`control_api.py`、`jtag_lock.py`、`context.py` |
-| `mcps/zynq_mcp/` | 唯一 MCP（共 101 工具：9 control + 92 domain）：`control/`（execution_ledger、single_worker、execution_gate、instance_guard、process_guard、session、recovery、operation_service、operation_registry、capabilities、context、timeout_config、workspace）、`adapters/`（vivado/xsct/jtag/uart）、`domains/`（pl/platform/ps）。已知计数漂移（技术债，已列入 B10/O8 发布清单已知限制 ①）：`capabilities.py` 的 `DOMAIN_APIS_IMPLEMENTED=91` 与实际 92 差 1；ps implemented=47 与文档 48 差 1 |
+| `mcps/zynq_mcp/` | 唯一 MCP（共 100 工具：9 control + 91 domain；B11 阶段②移除 platform_generate，见勘误 [B11_platform_generate_erratum.md](docs/development/mcp/B11_platform_generate_erratum.md)）：`control/`（execution_ledger、single_worker、execution_gate、instance_guard、process_guard、session、recovery、operation_service、operation_registry、capabilities、context、timeout_config、workspace）、`adapters/`（vivado/xsct/jtag/uart）、`domains/`（pl/platform/ps）。B10 已知限制①（计数漂移）已由 B11 阶段②关闭：`DOMAIN_APIS_IMPLEMENTED` 机械派生=91、ps implemented 47→48 |
 | `mcps/{pl_mcp,platform_mcp,ps_mcp}/` | B02 过渡遗留（最终被 zynq_mcp 取代） |
 | `boards/ALINX_AX7020_v1.0/` | Board Configuration Package — 板卡唯一数据源（README.md、board.xdc、board_profile JSON、package_manifest、ps7_preset.tcl、SOURCES.md） |
-| `skills/zynq_gpio/` | GPIO Skill（根目录 `skills/zynq_gpio/`：SKILL.md + phases/0–7 + appendix） |
+| `skills/zynq_dev/` | 泛化框架 Skill（B11 阶段①，零项目外设字样：SKILL.md + phases/0–8 + appendix_mechanics）；旧 GPIO Skill 已归档 `docs/development/skill/archive/zynq_gpio_v1/`（方案 A，SHA256 记录） |
 | `docs/` | 冻结架构 + `development/`（G0–G12 历史材料；按 Brick 记录的 `mcp/`、`tests/`、`skill/`）+ `boardinformation/`（ALINX 官方 6 本 PDF 教程）+ `reference/`（golden_baseline、deployment） |
 | `tools/scripts/` | PowerShell 工具（USB/驱动/UART 扫描、CH340/CP210x 驱动安装） |
 | `tools/audit/` | 库存扫描脚本（`b00_tool_inventory.py`、`b01_consistency_scan.py`、`scan_absolute_paths.py`） |

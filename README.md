@@ -44,7 +44,7 @@
 | B08 | ✅ WHITE-BOX HARDWARE PASS | Agent1 R6 已完成真实硬件全链路 |
 | B09 | ✅ COMPLETE（PUBLIC MCP BLACK-BOX PASS） | 全新 Agent2 仅用 Skill + 公开 MCP 完成 P1–P6；Consistency 12/12、UART 8/8、`GPIO_E2E_PASS`，边界与清理审计通过；契约勘误已关闭 |
 | B10 | ✅ COMPLETE（O8 冻结包已交付） | 用户已确认 GPIO v1 稳定基线（2026-08-14）；发布清单见 [B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；下一切片方向已由 B11 承接 |
-| B11 | ⏳ 立项（阶段①进行中） | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题；规划见 [B11_plan.md](docs/development/mcp/B11_plan.md) |
+| B11 | ⏳ 阶段①②完成（阶段③待启动） | 泛化框架黑盒验证：泛化 Skill `skills/zynq_dev/` 落地（零 GPIO 字样）、MCP 去 GPIO 化（platform_generate 移除，见 [勘误](docs/development/mcp/B11_platform_generate_erratum.md)，工具 101→100）；规划见 [B11_plan.md](docs/development/mcp/B11_plan.md) |
 
 当前O1冻结基线（2026-08-12）：`ALL_TOOLS=101`；`mcps` 1264 collected；O1专项 24 passed；最终非硬件回归 1225 passed / 1 skipped / 38 deselected。另行真实入口验证 12 passed；其余26项host/device-live未在O1重复执行。
 
