@@ -72,7 +72,7 @@ development/tests/B09_gpio_agent2_blackbox_report.md
 | B08 | Agent1 完成 GPIO 白盒验收与故障注入 | Tests + Skill | ✅ **WHITE-BOX HARDWARE PASS (R6)** |
 | B09 | Agent2 在干净环境完成黑盒复现 | Tests | ✅ **COMPLETE（公开 MCP 纯黑盒 PASS）** |
 | B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ✅ **O8 冻结包 COMPLETE（2026-08-14）；下一切片方向已由 B11 承接** |
-| B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ⏳ **阶段①② COMPLETE（2026-08-14）；阶段③ Agent1 白盒待启动** |
+| B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ⏳ **阶段①–③ COMPLETE（2026-08-14，阶段③真板 PASS 含整改轮）；阶段④ Agent3 阶段黑盒待启动** |
 
 ## 5. 逐 Brick 交付与门禁
 
@@ -336,6 +336,12 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 > 阶段①——新泛化 Skill `skills/zynq_dev/`（11 文件 / 633 行，S0–S8 九阶段），机械扫描 gpio / LED / 0x41200000 / breath / blink **0 命中**；旧 GPIO Skill 按方案 A 归档至 `docs/development/skill/archive/zynq_gpio_v1/`（10 文件 SHA256 记录，SKILL.md 与 B10 冻结值一致）；契约测试 10→11 重映射（+1 零字样门禁回归测试）。
 > 阶段②——`platform_generate` 移除（勘误完成记录见 [B11_platform_generate_erratum.md](development/mcp/B11_platform_generate_erratum.md)）；阶段机推进权转 `platform_export_manifest`（决策 a）；`evaluate_observation` marker 必填；工具 101→100、能力常量机械派生（关闭 B10 已知限制①）；回归 **1376 collected / 1337 passed / 1 skipped / 38 deselected / 0 failed**（无净减，`.mcp.json` 哈希不变）。
 
+> **阶段③ 记录（2026-08-14，含整改轮）**：
+> 首轮白盒自测 BLOCKED（报告 [B11_phase3_whitebox_report.md](../tests/B11_phase3_whitebox_report.md)）：暴露 P1×4（D1 无地址分配、D2 无端口外部化、D3 无合成、D4 空闲心跳死锁）+ P2×6。
+> 整改轮（报告 [B11_remediation_round_report.md](development/mcp/B11_remediation_round_report.md)）：D0–D9 全部 FIXED——心跳回归"索要进程"模型（瞬时失败重试、P5 不再双重计票、ALIVE+STALE revive）；新增 3 原子 `platform_assign_addresses`/`platform_make_external`/`platform_synthesize`（工具 100→103）；回归 **1411 collected / 1371 passed / 1 skipped / 39 deselected / 0 failed**。
+> 重跑 PASS（报告 [B11_phase3_rerun_report.md](../tests/B11_phase3_rerun_report.md)）：真板 6-LED 全链路闭环——Platform 20/20 原子、XSA 含 HDF（350KB）、PL timing met、PS ELF、Consistency 12/12 ×2、故障注入双跑（`WROTE:0x2A READ:0x2B`→`LED_E2E_FAIL` 机读 FAIL；16 轮全对→`LED_E2E_PASS` 机读 PASS）、D4 修复实测（130s 空闲后正常准入）。
+> 新债：**D10（P1）** `ps_set_compiler_options` 的 defines 不传 `ps_compile`（故障注入改以源码变体等价交付）；**D11（P2）** verify_consistency Manifest 路径须绝对。E1/E2 为系统内存压力瞬时崩溃（非缺陷），E3 部署后再构建需先释放后端——均已按 S8 恢复阶梯处理并记录。
+
 ## 6. 当前工作
 
 - B00–B03：✅ COMPLETE / FROZEN。
@@ -346,7 +352,7 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 - B08：✅ Agent1 R6 白盒硬件 PASS；作为功能证据保留。
 - B09：✅ COMPLETE；O7 R3 全新 Agent2 公开 MCP 纯黑盒 PASS，契约勘误已关闭；R1/R2 失败作为历史整改证据保留。
 - B10：✅ O8 冻结包 COMPLETE（2026-08-14）；用户已确认 GPIO v1 稳定基线；发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)；下一切片方向已由 B11 承接（方向重定：泛化框架黑盒验证）。
-- B11：⏳ 阶段①② COMPLETE（2026-08-14）：泛化 Skill `skills/zynq_dev/` 落地（零字样门禁）；MCP 去 GPIO 化（platform_generate 移除见 [B11_platform_generate_erratum.md](development/mcp/B11_platform_generate_erratum.md)，工具 101→100）；回归 1376 collected / 1337 passed / 1 skipped / 38 deselected。阶段③ Agent1 白盒待启动；规划见 [B11_plan.md](development/mcp/B11_plan.md)。
+- B11：⏳ 阶段①–③ COMPLETE（2026-08-14）：泛化 Skill `skills/zynq_dev/`（零字样门禁）；MCP 去 GPIO 化+整改轮（platform_generate 移除见 [B11_platform_generate_erratum.md](development/mcp/B11_platform_generate_erratum.md)、心跳 D4 修复、3 新原子 assign_addresses/make_external/synthesize，工具 103）；阶段③真板 PASS（6-LED 全链路 + 故障注入双跑，报告 [B11_phase3_rerun_report.md](../tests/B11_phase3_rerun_report.md)）；新债 D10（defines 不传 ps_compile）/D11（verify_consistency 绝对路径）已记录。阶段④ Agent3 阶段黑盒待启动；规划见 [B11_plan.md](development/mcp/B11_plan.md)。
 - Execution Observation Contract：✅ [v1.0 COMPLETE / FROZEN](development/mcp/B09_execution_observation_contract.md)。
 - 总体完善方案：[O1–O6 COMPLETE / FROZEN；O7 R3 PASS；O8 冻结包已交付（2026-08-14，见 B10 发布清单）](development/mcp/B09_execution_observation_implementation_plan.md)。
 - O1冻结证据：[B09_O1_completion_report.md](development/mcp/B09_O1_completion_report.md)。
