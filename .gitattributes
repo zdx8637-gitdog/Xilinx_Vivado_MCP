@@ -1,0 +1,13 @@
+# 行尾规范：文本文件一律 LF（冻结资产 SHA256 纪律依赖字节级稳定）
+* text=auto eol=lf
+
+# 已知大二进制显式标记（防止被误判为文本转换）
+*.pdf binary
+*.bit binary
+*.dcp binary
+*.zip binary
+*.bin binary
+*.xsa binary
+*.elf binary
+*.jou binary
+*.log binary
