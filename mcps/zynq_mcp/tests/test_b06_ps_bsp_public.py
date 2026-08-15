@@ -516,6 +516,90 @@ class TestBspRealXsct:
                     f"ps_compile succeeded but no ELF produced under {pp}"
 
     @pytest.mark.host_live
+    async def test_ps_compile_defines_reach_compiler_real(
+            self, tmp_runtime_root, tmp_path):
+        """D10 regression (real XSCT): defines set via ps_set_compiler_options
+        must reach the compiler through ps_compile — the built ELF must
+        contain the #ifdef-gated probe string of the ENABLED branch and NOT
+        the disabled branch's string (proves the macro actually toggled
+        compilation instead of being dropped at the build-Tcl boundary).
+        """
+        _require_xsct()
+        _require_xsa()
+        params = _server_params(tmp_runtime_root)
+        async with stdio_client(params) as (r, w):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                tools = await _list_tools(s)
+                _skip_unless_bsp_integrated(tools)
+                sid = await _create_session(s, tmp_path)
+                pp = str(tmp_path)
+                _install_o4_platform_provenance(pp)
+                platform_name = "ax7020_platform"
+                app_name = "ax7020_app"
+
+                for tool, extra in (
+                    ("ps_import_hardware",
+                     {"xsa_path": _XSA, "project_path": pp}),
+                    ("ps_create_platform",
+                     {"name": platform_name, "project_path": pp}),
+                    ("ps_create_bsp",
+                     {"platform_name": platform_name, "project_path": pp}),
+                    ("ps_create_app",
+                     {"name": app_name, "project_path": pp}),
+                ):
+                    adm = await _ps_call(s, tool, sid, extra)
+                    assert adm["status"] == "success", \
+                        f"{tool} admission failed: {adm}"
+                    out = await _await_op(s, adm["data"]["operation_id"],
+                                          timeout_s=300)
+                    _expect_ok(out, tool)
+
+                staging = tmp_path / "compile_staging"
+                staging.mkdir()
+                main = staging / "main.c"
+                main.write_text(
+                    "#ifdef B11_PROBE_DEFINE\n"
+                    "const char *B11_PROBE = \"B11_DEFINE_ACTIVE\";\n"
+                    "#else\n"
+                    "const char *B11_PROBE = \"B11_DEFINE_INACTIVE\";\n"
+                    "#endif\n"
+                    "int main(void){ return (B11_PROBE[0] == 'B') ? 0 : 1; }\n",
+                    encoding="utf-8")
+                adm = await _ps_call(
+                    s, "ps_add_sources", sid,
+                    {"app_name": app_name, "files": [str(main)]})
+                out = await _await_op(s, adm["data"]["operation_id"],
+                                      timeout_s=300)
+                _expect_ok(out, "ps_add_sources")
+
+                # D10: the defines must be forwarded into `app build -defines`.
+                adm = await _ps_call(
+                    s, "ps_set_compiler_options", sid,
+                    {"opts": {"defines": "B11_PROBE_DEFINE"}})
+                assert adm["status"] == "success", \
+                    f"ps_set_compiler_options admission failed: {adm}"
+                out = await _await_op(s, adm["data"]["operation_id"],
+                                      timeout_s=300)
+                _expect_ok(out, "ps_set_compiler_options")
+
+                adm = await _ps_call(s, "ps_compile", sid,
+                                     {"app_name": app_name})
+                out = await _await_op(s, adm["data"]["operation_id"],
+                                      timeout_s=300)
+                payload = _expect_ok(out, "ps_compile")
+                assert payload.get("built") is True, out
+                elf_path = payload.get("elf")
+                assert elf_path, f"ps_compile payload missing elf: {payload}"
+                elf_bytes = Path(elf_path).read_bytes()
+                assert b"B11_DEFINE_ACTIVE" in elf_bytes, \
+                    "D10: defines never reached the compiler — the #ifdef " \
+                    "enabled branch string is absent from the ELF"
+                assert b"B11_DEFINE_INACTIVE" not in elf_bytes, \
+                    "D10: defines ignored — the #else branch string is " \
+                    "present in the ELF (macro did not toggle compilation)"
+
+    @pytest.mark.host_live
     async def test_ps_add_sources_real(self, tmp_runtime_root, tmp_path):
         """Real XSCT C2 regression: ps_add_sources must place the source in
         {ws}/{app}/src/main.c — never {ws}/src/main.c (B09) — and the app

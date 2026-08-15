@@ -155,6 +155,21 @@ def app_build(name: str) -> str:
     return f"app build -name {name}"
 
 
+def app_config_define_symbol(app: str, symbol: str) -> str:
+    """Add one compiler define symbol to an app's build configuration.
+
+    Vitis 2023.1 XSCT has NO ``app build -defines`` option (verified on the
+    real tool: `bad option '-defines': -name -all -help`). The supported
+    path is ``app config -name <app> -add define-compiler-symbols <sym>``,
+    which appends ``-D<sym>`` to the app's compiler options (Vitis 2023.1
+    sdk.tcl command reference: `app config -name test
+    define-compiler-symbols FSBL_DEBUG_INFO` → "Add -DFSBL_DEBUG_INFO to the
+    compiler options, while building the test application"). One call per
+    symbol; braces keep the symbol a single Tcl word.
+    """
+    return f"app config -name {app} -add define-compiler-symbols {{{symbol}}}"
+
+
 # BSP/Build (B06 second batch — integration phase).
 # NOTE: Vitis 2023.1 XSCT has no `importhw`/`updatehw`/`bsp create`/
 # `*-get-systems`; hardware is imported by `platform create -hw <xsa>` and
@@ -229,8 +244,3 @@ def importsources(app: str, path: str) -> str:
     ``zynq_platforms/ax7020_base/build_g11_vitis.tcl`` line 31.
     """
     return f"importsources -name {app} -path {path}"
-
-
-def app_build_defines(name: str, defines: str) -> str:
-    """Build `app build -name <name> -defines '<defines>'`."""
-    return f"app build -name {name} -defines {{{defines}}}"

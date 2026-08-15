@@ -420,6 +420,53 @@ class TestConsistencyChecks:
         assert r1 == r2
         assert r1["data"]["all_passed"] is True
 
+    # ── D11: relative manifest paths ──────────────────────────────────────
+    # B11 phase 3 found the Skill template calling verify_consistency with
+    # project-relative manifest paths: _load_manifest resolved them against
+    # the process CWD, every rule was silently skipped (12/12 skipped +
+    # NOT FOUND errors). Fix: resolve relative manifest paths against
+    # resolve_root, and reject relative paths without resolve_root as an
+    # explicit INVALID_ARGUMENT instead of a silent skip.
+
+    @pytest.mark.asyncio
+    async def test_relative_manifest_paths_with_resolve_root_pass(self, tmp_path):
+        """D11: relative manifest paths + resolve_root → resolved, all
+        checks run (no skipped rules)."""
+        proj = _build_project(tmp_path)
+        rel = {k: os.path.relpath(v, proj["root"]) for k, v in proj["paths"].items()}
+        result = await verify_consistency(
+            platform_manifest_path=rel["platform"],
+            pl_build_manifest_path=rel["pl_build"],
+            ps_build_manifest_path=rel["ps_build"],
+            board_profile_sha256=proj["bp_sha"], resolve_root=proj["root"])
+        assert result["status"] == "success"
+        data = result["data"]
+        assert data["all_passed"] is True
+        assert data["errors"] == []
+        assert data["summary"]["skipped"] == 0
+        assert data["summary"]["total"] == 12
+
+    @pytest.mark.asyncio
+    async def test_relative_manifest_paths_without_resolve_root_error(
+            self, tmp_path):
+        """D11: relative manifest paths without resolve_root → explicit
+        INVALID_ARGUMENT errors (never a silent all-skipped run)."""
+        proj = _build_project(tmp_path)
+        rel = {k: os.path.relpath(v, proj["root"]) for k, v in proj["paths"].items()}
+        result = await verify_consistency(
+            platform_manifest_path=rel["platform"],
+            pl_build_manifest_path=rel["pl_build"],
+            ps_build_manifest_path=rel["ps_build"],
+            board_profile_sha256=proj["bp_sha"])
+        data = result["data"]
+        assert data["errors"]
+        for label in ("platform", "pl_build", "ps_build"):
+            assert any(label in e and "INVALID_ARGUMENT" in e
+                       for e in data["errors"]), (label, data["errors"])
+        # every rule is skipped → fail-closed, never all_passed
+        assert data["summary"]["skipped"] == data["summary"]["total"]
+        assert data["all_passed"] is False
+
 
 # ── Query tool registration + dispatch ───────────────────────────────────
 

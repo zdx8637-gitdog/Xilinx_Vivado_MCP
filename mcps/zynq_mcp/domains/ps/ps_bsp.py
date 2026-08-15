@@ -662,7 +662,10 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
     rather than relying on the XSCT process's inherited PATH.
 
     If ``ps_set_compiler_options`` set defines for this workspace those are
-    passed as ``-defines`` to ``app build``.
+    applied to the app's build configuration first (``app config -add
+    define-compiler-symbols`` per symbol) so the subsequent build compiles
+    with the macros (D10 fix; Vitis 2023.1 XSCT ``app build`` has no
+    ``-defines`` option).
 
     Errors: INVALID_APP_NAME, BRIDGE_NOT_READY, BUILD_FAILED.
     """
@@ -683,6 +686,25 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
     # the owned XSCT PID in the Execution Ledger.
     if hasattr(bridge, "set_current_step"):
         bridge.set_current_step("APP_BUILD")
+    # D10 fix: defines configured by ps_set_compiler_options for this
+    # workspace are applied to the app's build configuration BEFORE the
+    # build. Vitis 2023.1 XSCT `app build` has no -defines option (verified
+    # on the real tool); the supported path is `app config -name <app>
+    # -add define-compiler-symbols <sym>` — one call per symbol, which
+    # appends -D<sym> to the compiler options (see templates.py).
+    defines = _WS_DEFINES.get(ws, "")
+    if defines:
+        for symbol in defines.split():
+            cfg_args = templates.app_config_define_symbol(name, symbol)
+            result = await safe_eval(bridge, cfg_args,
+                                     timeout_s=_BUILD_TIMEOUT_S,
+                                     tolerate_stderr=True)
+            verr = extract_bridge_error(result)
+            if verr:
+                return ps_error(
+                    "BUILD_FAILED",
+                    f"app config define failed: {verr[2]}",
+                    details={"app_name": app_name, "symbol": symbol})
     eval_args = templates.app_build(name)
     result = await safe_eval(bridge, eval_args,
                              timeout_s=_BUILD_TIMEOUT_S, tolerate_stderr=True)
@@ -706,6 +728,12 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
                              "build_method": "APP_BUILD"}).to_dict()
 
     # Step 3 — make fallback (safety net), by full make.exe path.
+    # D10 note: defines were already applied to the app's build config in
+    # Step 1 (`app config -add define-compiler-symbols`), which persists in
+    # the app settings; XSCT regenerates the Debug makefiles (src/subdir.mk)
+    # with those -D symbols baked into the compile line, so this plain
+    # `exec make` builds with the same macros. The fallback never runs
+    # without Step 1 having run.
     if hasattr(bridge, "set_current_step"):
         bridge.set_current_step("MAKE_FALLBACK")
     make_exe = _find_make()

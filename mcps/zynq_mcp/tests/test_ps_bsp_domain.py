@@ -271,6 +271,86 @@ class TestCompileApp:
         assert len(bridge.calls) == 1, bridge.calls
         assert bridge.calls[0][0] == "app build -name myapp"
 
+    async def test_compile_app_passes_defines_to_app_build(self, tmp_path):
+        """D10: defines set via set_compiler_options must reach the build
+        config (`app config -add define-compiler-symbols`, one call per
+        symbol) before `app build` — not just be stored in _WS_DEFINES."""
+        app = tmp_path / "myapp"
+        (app / "src").mkdir(parents=True)      # needed for app discovery
+        (app / "Debug").mkdir(parents=True)
+        _write_elf(str(app / "Debug" / "app.elf"))
+        bridge = FakeXsctBridge(results=[_OK, _OK, _OK], workspace=str(tmp_path))
+        r = await ps_bsp.set_compiler_options(
+            bridge, {"defines": "FAULT_INJECT=1 PROBE"})
+        assert r["status"] == "success", r
+        try:
+            r = await ps_bsp.compile_app(bridge, "myapp")
+            assert r["status"] == "success", r
+            # one app config define call per symbol, then the plain build
+            assert bridge.calls[0][0] == \
+                "app config -name myapp -add define-compiler-symbols {FAULT_INJECT=1}", \
+                bridge.calls[0][0]
+            assert bridge.calls[1][0] == \
+                "app config -name myapp -add define-compiler-symbols {PROBE}", \
+                bridge.calls[1][0]
+            assert bridge.calls[2][0] == "app build -name myapp", \
+                bridge.calls[2][0]
+            assert len(bridge.calls) == 3, bridge.calls
+        finally:
+            ps_bsp._WS_DEFINES.pop(str(tmp_path), None)
+
+    async def test_compile_app_defines_are_workspace_scoped(self, tmp_path):
+        """D10: defines configured for one workspace must not leak into a
+        plain build in another workspace (keyed by workspace path)."""
+        def _mk(ws):
+            app = ws / "myapp"
+            (app / "src").mkdir(parents=True)
+            (app / "Debug").mkdir(parents=True)
+            _write_elf(str(app / "Debug" / "app.elf"))
+            return FakeXsctBridge(results=[_OK, _OK], workspace=str(ws))
+
+        ws1 = tmp_path / "w1"
+        ws1.mkdir()
+        ws2 = tmp_path / "w2"
+        ws2.mkdir()
+        b1, b2 = _mk(ws1), _mk(ws2)
+
+        r = await ps_bsp.set_compiler_options(b1, {"defines": "FAULT_INJECT"})
+        assert r["status"] == "success", r
+        try:
+            await ps_bsp.compile_app(b1, "myapp")
+            await ps_bsp.compile_app(b2, "myapp")
+            assert b1.calls[0][0] == \
+                "app config -name myapp -add define-compiler-symbols {FAULT_INJECT}", \
+                b1.calls
+            assert b1.calls[1][0] == "app build -name myapp", b1.calls
+            # workspace w2: no defines configured → plain build only
+            assert b2.calls[0][0] == "app build -name myapp", b2.calls
+            assert len(b2.calls) == 1, b2.calls
+        finally:
+            ps_bsp._WS_DEFINES.pop(str(ws1), None)
+            ps_bsp._WS_DEFINES.pop(str(ws2), None)
+
+    async def test_compile_app_define_config_failure_is_fail_closed(
+            self, tmp_path):
+        """D10: if the app config define call fails, compile_app must return
+        BUILD_FAILED and never run the build."""
+        app = tmp_path / "myapp"
+        (app / "src").mkdir(parents=True)
+        (app / "Debug").mkdir(parents=True)
+        _write_elf(str(app / "Debug" / "app.elf"))
+        bridge = FakeXsctBridge(results=[_err()], workspace=str(tmp_path))
+        r = await ps_bsp.set_compiler_options(bridge, {"defines": "PROBE"})
+        assert r["status"] == "success", r
+        try:
+            r = await ps_bsp.compile_app(bridge, "myapp")
+            assert r["status"] == "error"
+            assert r["error"]["details"]["reason_code"] == "BUILD_FAILED"
+            assert len(bridge.calls) == 1, \
+                "no app build may run after a failed define config"
+        finally:
+            ps_bsp._WS_DEFINES.pop(str(tmp_path), None)
+
     async def test_compile_app_make_fallback_no_make_found(self, tmp_path,
                                                            monkeypatch):
         """No ELF from app build and make.exe unresolvable → fail-closed."""

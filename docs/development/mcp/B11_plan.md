@@ -99,6 +99,38 @@ HDF、D4 空闲心跳死锁）与 6 个 P2（D0/D5/D6/D7/D8/D9）。本整改轮
   host_live 专项、变更文件与 SHA256、`.mcp.json` 不变证据、git 提交见该报告。
 - 修复后阶段③白盒自测由**全新会话**重跑（阶段⑥门禁 6）。
 
+### 阶段③.2 小整改轮记录（2026-08-15 用户实板观察驱动，执行完成）
+
+阶段③重跑 PASS 后用户实板观察发现：PS 两个 LED（MIO0/MIO13，active-low）
+物理不亮（UART 读回自洽但引脚未动），且 LED 效果 8 轮即停。本轮执行：
+
+- **D10（P1）修复**：`ps_set_compiler_options` 的 defines 从不传 `ps_compile`——
+  `compile_app` 现读取 `_WS_DEFINES[ws]`，在 `app build` 前逐符号执行
+  `app config -name <app> -add define-compiler-symbols <sym>`（host_live 实测
+  证伪 `app build -defines`：真机报 `bad option '-defines'`；Vitis 2023.1 XSCT
+  正确 API 见安装 `sdk.tcl` `app config` 参考）；组件测试断言构建前配置 Tcl
+  序列，host_live 用 `#ifdef` 双分支探针字符串验证宏真实生效。
+- **D11（P2）修复**：`verify_consistency` 相对 Manifest 路径——实现按
+  `resolve_root` 解析相对 Manifest 路径；相对且无 `resolve_root` 时返回显式
+  `INVALID_ARGUMENT` 错误（fail-closed，绝不静默 skipped）；Skill §2.2 补路径规则。
+- **PS-LED 根因（带证据）**：① OUTEN 极性写反（清位=禁用输出驱动，高阻+板载
+  上拉 → active-low 灯恒灭，主因）；② 读回读 0x000 写镜像（DATA_LSW, WO）而非
+  `DATA_RO`（0x060, RO）→ 16 轮自洽 PASS 是镜像回显；③ 数据写应用 `DATA`
+  （0x040, RW）而非掩码寄存器。证据：workspace BSP `gpiops_v3_11` 驱动源码
+  （`xgpiops.c` L233–252/L269–285/L547–578、`xgpiops_hw.h` L50–55）+ ps7_preset.tcl
+  MIO 复用 + 部署 ps7_init.tcl。
+- **固件行为变更（用户明确要求）**：PASS 打印后**继续无限 1s 交替**（直到复位/
+  断电）；每轮仍输出 `WROTE/READ`；任一不一致 `LED_E2E_FAIL` 并停止。
+- **落点**：workspace 固件设计稿 `project_r3/src/main_r3p2_fixed.c`（新参考版，
+  原 r3 文件保留作证据）、Skill `appendix_mechanics.md` §5.1（PS 端并行输出引脚
+  驱动要点，零外设字样）、需求文档 `B11_blackbox_requirement_draft.md`
+  （§3.1 持续循环 / §3.2 真实状态寄存器硬约束 / §3.3 PASS 后不退出 / §6 阶段⑤
+  物理确认 6 灯含 PS 2 灯）。
+- **记录**：逐条 现象/根因/修复位置/测试名/状态、回归数字、变更文件与 SHA256、
+  `.mcp.json` 不变证据、git 提交见 `docs/development/mcp/B11_phase3_2_fix_report.md`
+  （新建）。
+- 阶段④/⑥ 全新会话白盒/黑盒重做由后续轮次执行（本规划阶段⑥门禁 6 不变）。
+
 ### 阶段③ Agent1 白盒自测
 
 **交付**：Agent1 仅用新框架 Skill + 6-LED 需求文档 + 公开 zynq_mcp 实现完整流程（Platform 原子序列 → PL 构建 → PS 软件 → 一致性 → JTAG 部署 → 观测判定），自证「Skill 零 GPIO 字样仍可完成 GPIO 考题」。

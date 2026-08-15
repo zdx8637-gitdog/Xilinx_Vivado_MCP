@@ -70,8 +70,16 @@ def _make_check(rule: str, passed, actual, expected, *,
 
 
 def _load_manifest(path, expected_type: str, errors: list[str],
-                   warnings: list[str], *, required: bool = False):
-    """Load one manifest dict from disk. Returns dict or None. Never raises."""
+                   warnings: list[str], *, required: bool = False,
+                   resolve_root: str | None = None):
+    """Load one manifest dict from disk. Returns dict or None. Never raises.
+
+    ``resolve_root`` resolves *relative manifest paths* (D11): a relative
+    path without ``resolve_root`` is rejected as INVALID_ARGUMENT instead of
+    being silently resolved against the process CWD (which made every rule
+    skipped). Absolute paths and relative paths with ``resolve_root`` are
+    checked with ``os.path.isfile`` as before.
+    """
     if path is None:
         if required:
             errors.append("platform_manifest_path is required")
@@ -83,25 +91,35 @@ def _load_manifest(path, expected_type: str, errors: list[str],
     if not path.strip():
         errors.append(f"{expected_type} manifest path is empty")
         return None
-    if not os.path.isfile(path):
-        errors.append(f"{expected_type} manifest NOT FOUND: {path} — Phase may need re-run")
+    check_path = path
+    if not os.path.isabs(path):
+        if resolve_root:
+            check_path = os.path.join(resolve_root, path)
+        else:
+            errors.append(
+                f"{expected_type} manifest path is relative ({path!r}) and "
+                "resolve_root is not provided — pass an absolute path or "
+                "set resolve_root (INVALID_ARGUMENT)")
+            return None
+    if not os.path.isfile(check_path):
+        errors.append(f"{expected_type} manifest NOT FOUND: {check_path} — Phase may need re-run")
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(check_path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except json.JSONDecodeError as e:
-        errors.append(f"{expected_type} manifest at {path} is not valid JSON: {e}")
+        errors.append(f"{expected_type} manifest at {check_path} is not valid JSON: {e}")
         return None
     except OSError as e:
-        errors.append(f"{expected_type} manifest at {path} unreadable: {e}")
+        errors.append(f"{expected_type} manifest at {check_path} unreadable: {e}")
         return None
     if not isinstance(data, dict):
-        errors.append(f"{expected_type} manifest at {path} must be a JSON object")
+        errors.append(f"{expected_type} manifest at {check_path} must be a JSON object")
         return None
     declared = data.get("manifest_type")
     if declared != expected_type:
         errors.append(
-            f"{expected_type} manifest at {path} declares manifest_type={declared!r}, "
+            f"{expected_type} manifest at {check_path} declares manifest_type={declared!r}, "
             f"expected {expected_type!r}")
         return None
     return data
@@ -268,9 +286,11 @@ async def verify_consistency(
     checks: list[dict] = []
 
     plat = _load_manifest(platform_manifest_path, "platform", errors, warnings,
-                          required=True)
-    pl = _load_manifest(pl_build_manifest_path, "pl_build", errors, warnings)
-    ps = _load_manifest(ps_build_manifest_path, "ps_build", errors, warnings)
+                          required=True, resolve_root=resolve_root)
+    pl = _load_manifest(pl_build_manifest_path, "pl_build", errors, warnings,
+                        resolve_root=resolve_root)
+    ps = _load_manifest(ps_build_manifest_path, "ps_build", errors, warnings,
+                        resolve_root=resolve_root)
 
     if board_profile_sha256 is None:
         warnings.append("board_profile_sha256 not provided; "
