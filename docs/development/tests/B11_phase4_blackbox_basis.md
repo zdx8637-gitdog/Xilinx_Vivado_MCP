@@ -44,3 +44,19 @@
 ## 4. 运行有效性判定
 
 Agent3 运行结束后由审核方机械核对：输入哈希是否与本节一致、MCP commit 是否未变、门禁逐条是否有证据。任何输入漂移 → 运行无效，需重跑。
+
+## 5. v2 更新（阶段⑥.1 修复后，2026-08-15 —— Agent2 终验重跑用）
+
+阶段⑥ Agent2 首轮终验 BLOCKED（服务端 P1：崩溃恢复残留 `UNOWNED_WORKER_PRESENT` 死锁，证据 `D:\_b11_p4_external\agent2_20260815\evidence\`）；⑥.1 整改轮修复（报告 [B11_phase6_1_fix_report.md](../mcp/B11_phase6_1_fix_report.md)）。以下为 Agent2 重跑的冻结基线 v2：
+
+| 输入 | 版本锚点 | SHA256 |
+|---|---|---|
+| MCP 生产代码 | git commit `8b965301fb4ddf4b9c7676e58e5b25102f6e62cb` | git 权威 |
+| 工具数 | 103（不变） | 机械统计 |
+| 6-LED 需求文档 | 不变 | `39e65e01e09cc4dfb39b8506b3a649ecd4459dea6141294f5f82f91d076a25a2` |
+| Skill `appendix_mechanics.md`（新增"引脚名必须真实查询"决策规则） | — | `1573e5ee5e761c54ea265b7af9f41b1bfa533e50cd16090e35a2cb8cff3c0fa9` |
+| Skill 其余 10 文件 | 与 v1 一致（§1 表） | 同 §1 |
+| 板卡物理事实 | 不变 | 板卡包锁定 |
+| 回归基线 | 1426 collected / 1385 passed / 1 skipped / 40 deselected / 0 failed | ⑥.1 实测 |
+
+硬门禁与隔离规则同 §2/§3；隔离区更换为 `D:\_b11_p4_external\agent2b_20260815\`。
