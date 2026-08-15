@@ -108,6 +108,15 @@ export（XSA → Manifest）。**S3/S5 决策说明：地址分配与端口外�
 validate 报真实告警、PS 域无法寻址；未外部化的端口不会出现在 wrapper/XSA
 中；不合成则 XSA 缺 HDF，PS 域 `ps_create_platform` 必然失败。
 
+**决策规则（连接/外部化前命名）**：`platform_connect_interface` /
+`platform_connect_clock` / `platform_connect_reset` / `platform_make_external`
+中的**引脚/接口名**（`<IF_SOURCE>`、`<IF_DEST>`、`<CLK_SOURCE>`、
+`<CLK_TARGET>`、`<RST_SOURCE>`、`<RST_TARGET>`、`<IP>/<PIN>`、`<PORT>`）
+**必须来自真实对象查询**——工程内 IP 边界描述、BD 单元/引脚清单等实际查询
+结果，**不得臆造命名**（臆造的引脚名会让 create_bd_port 成功但连线失败，
+留下悬空端口，validate 报 critical warning）；**查询不可得时停并报告**，
+禁止用猜测的名字继续连线或外部化，也禁止为绕过查询而假设名称。
+
 | # | 工具 | 参数（占位符） | 成功条件 |
 |---|------|----------------|----------|
 | 1 | `platform_create_design` | `{"name": "<DESIGN_NAME>", "part": "<PART>"}` | Operation SUCCEEDED |

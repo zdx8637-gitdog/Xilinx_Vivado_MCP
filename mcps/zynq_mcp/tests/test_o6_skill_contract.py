@@ -297,3 +297,22 @@ def test_skill_mechanical_gate_zero_project_terms() -> None:
         if pattern.search(text)
     }
     assert hits == {}
+
+
+def test_skill_connect_external_names_must_come_from_real_queries() -> None:
+    """B11 阶段⑥.1 — decision rule in the platform atom template: pin/interface
+    names used by the connect / make_external atoms must come from real object
+    queries (IP boundary descriptions, BD cell/pin listings), never invented;
+    when the query is not available the agent must stop and report instead of
+    guessing. Both Agent3 and Agent2 previously invented pin names on
+    ``platform_make_external``, producing dangling BD ports.
+    """
+    appendix = _documents()["appendix_mechanics.md"]
+    required = (
+        "决策规则（连接/外部化前命名）",
+        "引脚/接口名",
+        "必须来自真实对象查询",
+        "不得臆造命名",
+        "查询不可得时停并报告",
+    )
+    assert {token for token in required if token not in appendix} == set()

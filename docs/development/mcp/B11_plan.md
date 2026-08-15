@@ -159,6 +159,35 @@ HDF、D4 空闲心跳死锁）与 6 个 P2（D0/D5/D6/D7/D8/D9）。本整改轮
 6. 修复后必须使用**全新无记忆 Agent2 会话**重新验收（任何阶段②/③修复都触发重验）；
 7. 终态 `PASS / AWAITING USER REVIEW`，用户审核后按流程收尾（B11 不自行冻结）。
 
+### 阶段⑥.1 整改轮记录（2026-08-15 Agent2 终验 BLOCKED，P1 修复执行完成）
+
+Agent2 终验 BLOCKED（证据 `D:\_b11_p4_external\agent2_20260815\evidence\`）：
+Vivado worker 崩溃 → close_session 后端清理失败（BACKEND_SHUTDOWN_FAILED）→
+`recover_execution` 只置 state=ABSENT、**未清 backend/owner/instance 残留字段**
+→ Ledger 残留 backend="VIVADO" → 所有 command 被 `UNOWNED_WORKER_PRESENT`
+门禁永久拒绝，recover（7 次）/服务器重启（3 次）/新会话（5 个）均无法解除。
+
+- **P1 修复**：`mcps/zynq_mcp/control/recovery.py` `recovery_mutator`——P1（无活
+  进程）通过后经 `_clear_owner_residue` 清 `backend=BACKEND_NONE`、state=ABSENT、
+  pid/process identity/supervisor 三字段/instance_id=None（与 `_worker_record`
+  缺省语义一致，恢复后等价于「从未有过 worker」）；IDLE 分支在无活进程时同样
+  清除修复前遗留的死锁残留（RESIDUE_CLEARED），活 PID 仍不触碰（no-op 保持）。
+  门禁（`tool_process_controller.py` `_ensure_backend`/`_commit_started`）零改动，
+  活 worker/活 PID/资源持有照旧拒绝；close_session/dispatcher 零改动（确认
+  recover 为唯一公开出路）。
+- **P2（一并做）**：`skills/zynq_dev/appendix_mechanics.md` §3 补「决策规则（连接/
+  外部化前命名）」——引脚/接口名必须来自真实对象查询（IP 边界描述、BD 单元/引脚
+  清单），不得臆造命名，查询不可得时停并报告（Agent3/Agent2 均曾在
+  `platform_make_external` 臆造引脚名 → 悬空端口）。
+- **测试**：`test_b11_phase6_1_recovery_residual.py`（新建，8 个：组件级残留清理 +
+  IDLE 死锁愈合 + 真实进程级崩溃→清理失败→recover→新会话→新 command 全链 +
+  门禁保持）；`test_o6_skill_contract.py` +1（决策规则段存在扫描）；0 删除/0 替换。
+- **记录**：现象/根因/修复位置/测试名/状态、回归数字、变更文件与 SHA256、
+  `.mcp.json` 不变证据、git 提交见 `docs/development/mcp/B11_phase6_1_fix_report.md`
+  （新建）；完整非硬件回归 `1426 collected / 1385 passed / 1 skipped /
+  40 deselected / 0 failed`（对照基线 1417/1376/1/40/0，无下降）。
+- 修复后阶段⑥重验由**全新无记忆 Agent2 会话**执行（本规划阶段⑥门禁 6 不变）。
+
 ## 3. 测试不得净减：旧测试 → 替代测试映射（机械清单）
 
 **原则（项目纪律）**：任何删除/重命名测试必须给出旧→替代一一映射与等价性说明；全量回归数量不得净减；机械统计（collected/passed/skipped/xfail）如实报告。

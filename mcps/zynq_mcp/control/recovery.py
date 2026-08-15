@@ -2,9 +2,10 @@
 import time
 from mcps.zynq_mcp.control.execution_ledger import (
     ExecutionLedger, _now_iso,
+    BACKEND_NONE,
     EXECUTION_LANE_IDLE, EXECUTION_LANE_RECOVERY_REQUIRED,
     OP_INTERRUPTED, OP_OUTCOME_UNKNOWN, OP_TIMED_OUT, OP_NON_TERMINAL,
-    WORKER_STATE_ABSENT, ChannelBusyError,
+    WORKER_STATE_ABSENT, WORKER_STATE_DEAD, ChannelBusyError,
 )
 from mcps.zynq_mcp.control.process_guard import is_pid_alive
 from mcps.zynq_mcp.control.resource_registry import resource_public_view
@@ -28,13 +29,74 @@ def diagnose_execution(ledger):
     }}
 
 
+def _owner_residue_present(w) -> bool:
+    """True when the worker record still carries owner/instance identity.
+
+    The controller gate (tool_process_controller._ensure_backend /
+    _commit_started) treats ``backend`` outside (None, "", BACKEND_NONE) or a
+    ``state`` outside (ABSENT, DEAD) as "a worker not owned by this controller"
+    and refuses every command with UNOWNED_WORKER_PRESENT.  A crash whose
+    shutdown failed leaves exactly those fields behind (``_persist_failure``
+    keeps backend/identity/supervisor/instance_id), so recovery must detect
+    and erase all of them — not only state/pid.
+    """
+    return (w.get("backend") not in (None, "", BACKEND_NONE)
+            or w.get("state") not in (WORKER_STATE_ABSENT, WORKER_STATE_DEAD)
+            or w.get("pid") is not None
+            or w.get("process_start_time") is not None
+            or w.get("executable_path") is not None
+            or w.get("instance_id") is not None
+            or w.get("supervisor_pid") is not None)
+
+
+def _clear_owner_residue(w) -> None:
+    """Reset owner/instance fields to the ledger's "never had a worker" shape.
+
+    Mirrors the fields written by ``_worker_record``/``_commit_absent`` so the
+    recovered record is indistinguishable from a fresh one: backend NONE,
+    state ABSENT, no PID, no process identity, no supervisor, no instance
+    ownership.  Resource evidence (jtag_lease / uart_capture / serial_owner)
+    is intentionally untouched here — the caller decides its fate.
+    """
+    w["backend"] = BACKEND_NONE
+    w["state"] = WORKER_STATE_ABSENT
+    w["pid"] = None
+    w["process_start_time"] = None
+    w["executable_path"] = None
+    w["executable_args"] = None
+    w["instance_id"] = None
+    w["supervisor_pid"] = None
+    w["supervisor_process_start_time"] = None
+    w["supervisor_executable_path"] = None
+    w["last_heartbeat_at"] = None
+
+
 def recovery_mutator(op_id):
     def _mutator(ledger):
         w = ledger.worker or {}; pid = w.get("pid")
-        # IDLE → no-op
+        # IDLE → no-op, unless a crash-recover left owner/instance residue on
+        # an already-IDLE lane.  A pre-fix recover set state=ABSENT but kept
+        # backend/identity, after which the controller gate refused every
+        # command with UNOWNED_WORKER_PRESENT and — because the lane was IDLE —
+        # even a repeat recover_execution was a no-op.  Heal that residue when
+        # no worker process is alive; a live idle worker is a normal steady
+        # state and is never touched.
         if ledger.execution_lane == EXECUTION_LANE_IDLE:
-            ledger.recovery_log.append({"action": "recover", "result": "ALREADY_IDLE",
-                "timestamp": _now_iso(), "recovery_op_id": op_id})
+            if pid and pid > 0 and is_pid_alive(pid):
+                ledger.recovery_log.append({"action": "recover",
+                    "result": "ALREADY_IDLE", "timestamp": _now_iso(),
+                    "recovery_op_id": op_id})
+                return ledger
+            if _owner_residue_present(w):
+                _clear_owner_residue(w)
+                ledger.recovery_log.append({"action": "recover",
+                    "result": "RESIDUE_CLEARED", "timestamp": _now_iso(),
+                    "worker_generation": w.get("worker_generation", 0),
+                    "recovery_op_id": op_id})
+            else:
+                ledger.recovery_log.append({"action": "recover",
+                    "result": "ALREADY_IDLE", "timestamp": _now_iso(),
+                    "recovery_op_id": op_id})
             return ledger
         # P1: worker alive
         if pid and pid > 0 and is_pid_alive(pid):
@@ -61,7 +123,7 @@ def recovery_mutator(op_id):
         # P6-P7: commit
         gen = w.get("worker_generation", 0) + 1
         ledger.execution_lane = EXECUTION_LANE_IDLE
-        w["state"] = WORKER_STATE_ABSENT; w["pid"] = None; w["last_heartbeat_at"] = None
+        _clear_owner_residue(w)
         w["worker_generation"] = gen
         w["project_lease_held"] = False; w["jtag_lease_held"] = False; w["serial_owner"] = None
         jtag = w.get("jtag_lease")
