@@ -46,6 +46,16 @@ start（CPU 执行前）→ wait（markers 全部来自需求文档，`<PASS_MAR
 `<FAIL_MARKER>`）→ stop（取完整文本）。marker 纪律与 `\x00` 清理见
 [appendix_mechanics.md](../appendix_mechanics.md)「UART 捕获」。
 
+### 7d. 收尾清理（硬性规则：保持目标运行态）
+
+观测与判定完成后的收尾顺序：`ps_stop_uart_capture` → `ps_disconnect_hw_server`
+→ `close_session`。**收尾阶段严禁调用 `ps_halt_target` / `ps_reset_target`**：
+目标必须保持运行态离开——需求若要求持续效果（循环演示类），板载现象在断开
+JTAG 后必须继续可见，供用户随时观察。经验教训：曾因收尾时停住目标，导致
+板载效果冻结在最后写入状态，用户误判为功能失败；恢复方式为重新
+`ps_run_target` 恢复执行（固件仍在内存中，无需重烧）。判定 PASS 不等于可以
+停住目标——"效果持续可观察"是需求的观测语义，由 S8 判定表确认。
+
 ## 智能体自主决策范围
 
 - 部署序列执行与观测配置（波特率、捕获窗口、marker/帧判定规则——marker 值
