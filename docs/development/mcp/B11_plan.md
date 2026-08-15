@@ -1,7 +1,7 @@
 # B11 立项规划草案：泛化框架黑盒验证（DRAFT）
 
 > 日期：2026-08-14（`Get-Date` 实测 2026-08-14 17:19 +08:00）
-> 状态：**DRAFT — 待用户审核。本文档是立项规划草案，不代表 B11 已立项、不冻结任何资产、不修改任何生产代码 / 测试 / skills / boards / 冻结文档。** B11 正式立项须等用户批准本规划后，由后续轮次更新 `docs/brick_development_plan.md` 并按现有 Brick 流程（Skill / MCP / Tests 三目录逐子步骤记录）执行。
+> 状态：**B11 COMPLETE（2026-08-16，全六阶段闭环——见 `docs/brick_development_plan.md` §4/§6 与本文各阶段追加记录；下文为立项时的原始 DRAFT 声明，作为历史保留）**。原始声明：本文档是立项规划草案，不代表 B11 已立项、不冻结任何资产、不修改任何生产代码 / 测试 / skills / boards / 冻结文档。
 > 配套文档：`docs/development/mcp/B11_platform_generate_erratum_draft.md`（B05 冻结资产处置勘误草案）、`docs/development/tests/B11_blackbox_requirement_draft.md`（6-LED 黑盒考题需求草案）、`docs/development/skill/B11_generalized_skill_design.md`（阶段①设计基础，已更新定位）、`docs/development/mcp/B11_data_acquisition_proposal.md`（已改述为「验证实例候选：数据采集（非当前立项对象）」）。
 
 ## 1. 背景与用户最新决定（必须记录，含义不可改动）

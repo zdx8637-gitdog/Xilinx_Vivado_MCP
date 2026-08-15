@@ -2,7 +2,7 @@
 
 > 项目根: `D:\fpgaproject`
 > 架构: `docs/architecture_ai_zynq7020.md` v2.3.1 (FROZEN TOP-LEVEL)
-> 当前：B00–B06 基础能力已完成；B07/B08/B09 硬件功能链路 PASS；Execution Observation O1–O6 已冻结；O7 R3 全新 Agent2 公开 MCP 黑盒验收 PASS，B09 契约勘误已由用户审核关闭；B10/O8 冻结包已交付（用户确认 GPIO v1 稳定基线），下一切片规划待确认
+> 当前：B00–B09 COMPLETE；B10/O8 冻结包已交付（用户确认 GPIO v1 稳定基线）；**B11 ✅ COMPLETE（2026-08-16）：泛化框架黑盒验证——零外设字样 Skill + 103 工具 MCP + 6-LED 考题，白盒/阶段黑盒/终验黑盒全链路 PASS（输入冻结见 `docs/development/tests/B11_phase4_blackbox_basis.md`）**
 
 ## B03 板卡配置包与环境基线
 
