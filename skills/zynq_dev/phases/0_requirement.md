@@ -14,6 +14,7 @@
 | 功能目标 | `<REQUIREMENT_FUNCTIONAL>` | 系统做什么（要什么，不写怎么实现） |
 | 外设对象 | `<REQUIREMENT_PERIPHERAL>` | 需求文档声明的目标外设（本 Skill 不预设任何外设） |
 | 观测方式 | `<REQUIREMENT_OBSERVABLE>` | 可观察输出（如 UART 文本、视觉现象、仿真波形） |
+| 板载效果存续性 | `<REQUIREMENT_OBSERVATION_PERSISTENCE>` | 观测结束后板载效果的存续要求（持续可见 / 无要求 / 要求停止）——S7 收尾据此确认目标最终状态（可选，缺省=保持运行） |
 | 判定条件 | `<REQUIREMENT_PASS>` / `<REQUIREMENT_FAIL>` | PASS/FAIL 的机读定义（即 `<PASS_MARKER>` / `<FAIL_MARKER>`） |
 | 上位机分工 | `<REQUIREMENT_UPPER_COMPUTER>` | 数据流的另一端由谁消费/解析 |
 | 时钟/接口/地址约束 | `<REQUIREMENT_CLOCK>` / `<REQUIREMENT_INTERFACE>` / `<REQUIREMENT_ADDRESS>` | 需求给出的约束（可选） |

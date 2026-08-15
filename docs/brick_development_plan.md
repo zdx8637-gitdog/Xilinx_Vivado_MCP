@@ -345,7 +345,7 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 > **阶段③.2 + 终版 + ⑤ 记录（2026-08-14/15）**：
 > ③.2 小整改（报告 [B11_phase3_2_fix_report.md](development/mcp/B11_phase3_2_fix_report.md)）：D10 FIXED（真机实测 XSCT 正确 API 为 `app config -add define-compiler-symbols`，defines 真实生效）；D11 FIXED（相对路径+resolve_root 解析、无 resolve_root 显式 INVALID_ARGUMENT）；**PS 输出引脚不亮根因** R1 输出使能位被清/R2 写掩码寄存器/R3 读回写镜像（应读 DATA_RO 真实状态）——Skill §5.1 增加零字样驱动要点；需求更新为"PASS 后持续 1s 交替循环 + 读回必须真实状态寄存器"；回归 1417 collected / 1376 passed / 1 skipped / 40 deselected。
 > 阶段③终版（报告 [B11_phase3_final_report.md](../tests/B11_phase3_final_report.md)）：真板 PASS——Platform 15 原子/PL/PS 全绿、FAULT 构建（D10 defines 注入）真板 `LED_E2E_FAIL` 机读 FAIL、正确构建 `LED_E2E_PASS` 后继续捕获 28 行（14 轮）交替、读回走 DATA_RO、Consistency 12/12 ×2。新债 N2（P2，OUTCOME_UNKNOWN+IDLE 通道死锁，已用新 runtime 实例恢复）。
-> **阶段⑤ 用户硬件确认（2026-08-15）**：用户实板观察发现收尾清理把 ARM halt、灯冻结在模式 B（N3 事件）→ 公开 MCP 探测证实 halted → `ps_run_target` 恢复 → **用户确认 6 灯恢复 1s 交替（含 PS 2 灯物理点亮）**。Skill `phases/7` 新增「7d 收尾清理（硬性规则：保持目标运行态）」。
+> **阶段⑤ 用户硬件确认（2026-08-15）**：用户实板观察发现收尾清理把 ARM halt、灯冻结在模式 B（N3 事件）→ 公开 MCP 探测证实 halted → `ps_run_target` 恢复 → **用户确认 6 灯恢复 1s 交替（含 PS 2 灯物理点亮）**。Skill `phases/7` 新增「7d 收尾清理」决策点：**目标最终状态由需求确认并留证据（默认保持运行，halt/reset 必须有依据），不设固定动作**。
 
 ## 6. 当前工作
 
