@@ -72,7 +72,7 @@ development/tests/B09_gpio_agent2_blackbox_report.md
 | B08 | Agent1 完成 GPIO 白盒验收与故障注入 | Tests + Skill | ✅ **WHITE-BOX HARDWARE PASS (R6)** |
 | B09 | Agent2 在干净环境完成黑盒复现 | Tests | ✅ **COMPLETE（公开 MCP 纯黑盒 PASS）** |
 | B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ✅ **O8 冻结包 COMPLETE（2026-08-14）；下一切片方向已由 B11 承接** |
-| B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ⏳ **阶段①②③⑤ COMPLETE（阶段③真板 PASS + ⑤用户确认 6 灯 1s 交替）；阶段④ Agent3 阶段黑盒待启动** |
+| B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ⏳ **阶段①②③④⑤ COMPLETE（④ Agent3 阶段黑盒 PASS）；阶段⑥ Agent2 终验黑盒待启动** |
 
 ## 5. 逐 Brick 交付与门禁
 
@@ -347,6 +347,8 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 > 阶段③终版（报告 [B11_phase3_final_report.md](../tests/B11_phase3_final_report.md)）：真板 PASS——Platform 15 原子/PL/PS 全绿、FAULT 构建（D10 defines 注入）真板 `LED_E2E_FAIL` 机读 FAIL、正确构建 `LED_E2E_PASS` 后继续捕获 28 行（14 轮）交替、读回走 DATA_RO、Consistency 12/12 ×2。新债 N2（P2，OUTCOME_UNKNOWN+IDLE 通道死锁，已用新 runtime 实例恢复）。
 > **阶段⑤ 用户硬件确认（2026-08-15）**：用户实板观察发现收尾清理把 ARM halt、灯冻结在模式 B（N3 事件）→ 公开 MCP 探测证实 halted → `ps_run_target` 恢复 → **用户确认 6 灯恢复 1s 交替（含 PS 2 灯物理点亮）**。Skill `phases/7` 新增「7d 收尾清理」决策点：**目标最终状态由需求确认并留证据（默认保持运行，halt/reset 必须有依据），不设固定动作**。
 
+> **阶段④ 记录（2026-08-15）**：Agent3 阶段黑盒 **PASS**。输入冻结基线见 [B11_phase4_blackbox_basis.md](../tests/B11_phase4_blackbox_basis.md)（Skill/需求/MCP 哈希零漂移）；隔离区 `D:\_b11_p4_external\agent3_20260815\`（项目外，不可读仓库）。全新上下文智能体仅凭「Skill 快照 + 需求文档 + 板卡事实 + 公开 zynq_mcp（103 工具）」独立完成 6-LED 全流程：252 次真实 MCP 调用、223 个终态（199 SUCCEEDED / 24 FAILED 均为早期恢复轮次，按 S8 分类恢复后全绿）、三 Manifest、Consistency 12/12、16 轮读回全对 + `LED_E2E_PASS` 一次 + **PASS 后 31 轮持续交替**（30s 二次捕获）、PS 读回 DATA_RO（与生成 BSP 头文件交叉核对）、收尾保持 RUNNING、无残留进程。硬门禁逐条自查通过。环境观察：黑盒运行在仓库根产生 `vivado_pl/` 生成目录（Vivado 默认行为），已加入 .gitignore。
+
 ## 6. 当前工作
 
 - B00–B03：✅ COMPLETE / FROZEN。
@@ -357,7 +359,7 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 - B08：✅ Agent1 R6 白盒硬件 PASS；作为功能证据保留。
 - B09：✅ COMPLETE；O7 R3 全新 Agent2 公开 MCP 纯黑盒 PASS，契约勘误已关闭；R1/R2 失败作为历史整改证据保留。
 - B10：✅ O8 冻结包 COMPLETE（2026-08-14）；用户已确认 GPIO v1 稳定基线；发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)；下一切片方向已由 B11 承接（方向重定：泛化框架黑盒验证）。
-- B11：⏳ 阶段①②③⑤ COMPLETE（2026-08-14/15）：泛化 Skill `skills/zynq_dev/`（零字样门禁）；MCP 去 GPIO 化+整改（103 工具）；阶段③真板 PASS（报告 [B11_phase3_final_report.md](../tests/B11_phase3_final_report.md)）+ ⑤用户确认 6 灯 1s 交替（含 PS 2 灯，N3 halt 事件已恢复并固化 Skill 7d 规则）；新债 D10/D11 已修、N1/N2 已记录。阶段④ Agent3 阶段黑盒待启动；规划见 [B11_plan.md](development/mcp/B11_plan.md)。
+- B11：⏳ 阶段①②③④⑤ COMPLETE（2026-08-14/15）：泛化 Skill `skills/zynq_dev/`（零字样门禁）；MCP 103 工具；阶段③真板 PASS（[终版报告](../tests/B11_phase3_final_report.md)）；⑤用户确认 6 灯 1s 交替（含 PS 2 灯）；④ Agent3 阶段黑盒 PASS（隔离区 `D:\_b11_p4_external\agent3_20260815\`，输入冻结 [B11_phase4_blackbox_basis.md](../tests/B11_phase4_blackbox_basis.md)）。阶段⑥ Agent2 终验黑盒待启动；规划见 [B11_plan.md](development/mcp/B11_plan.md)。
 - Execution Observation Contract：✅ [v1.0 COMPLETE / FROZEN](development/mcp/B09_execution_observation_contract.md)。
 - 总体完善方案：[O1–O6 COMPLETE / FROZEN；O7 R3 PASS；O8 冻结包已交付（2026-08-14，见 B10 发布清单）](development/mcp/B09_execution_observation_implementation_plan.md)。
 - O1冻结证据：[B09_O1_completion_report.md](development/mcp/B09_O1_completion_report.md)。

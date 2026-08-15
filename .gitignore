@@ -33,6 +33,9 @@ NA/
 /vivado.log
 /vivado_*.log
 
+# Vivado 默认项目目录（黑盒运行时会落在服务器 cwd）
+/vivado_pl/
+
 # 机器本地配置
 .claude/settings.local.json
 
