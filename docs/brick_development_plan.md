@@ -72,7 +72,7 @@ development/tests/B09_gpio_agent2_blackbox_report.md
 | B08 | Agent1 完成 GPIO 白盒验收与故障注入 | Tests + Skill | ✅ **WHITE-BOX HARDWARE PASS (R6)** |
 | B09 | Agent2 在干净环境完成黑盒复现 | Tests | ✅ **COMPLETE（公开 MCP 纯黑盒 PASS）** |
 | B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ✅ **O8 冻结包 COMPLETE（2026-08-14）；下一切片方向已由 B11 承接** |
-| B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ⏳ **阶段①②③④⑤ COMPLETE（④ Agent3 阶段黑盒 PASS）；阶段⑥ Agent2 终验黑盒待启动** |
+| B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ✅ **COMPLETE（2026-08-16）：全六阶段闭环，Agent2 终验黑盒 PASS** |
 
 ## 5. 逐 Brick 交付与门禁
 
@@ -349,6 +349,12 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 
 > **阶段④ 记录（2026-08-15）**：Agent3 阶段黑盒 **PASS**。输入冻结基线见 [B11_phase4_blackbox_basis.md](../tests/B11_phase4_blackbox_basis.md)（Skill/需求/MCP 哈希零漂移）；隔离区 `D:\_b11_p4_external\agent3_20260815\`（项目外，不可读仓库）。全新上下文智能体仅凭「Skill 快照 + 需求文档 + 板卡事实 + 公开 zynq_mcp（103 工具）」独立完成 6-LED 全流程：252 次真实 MCP 调用、223 个终态（199 SUCCEEDED / 24 FAILED 均为早期恢复轮次，按 S8 分类恢复后全绿）、三 Manifest、Consistency 12/12、16 轮读回全对 + `LED_E2E_PASS` 一次 + **PASS 后 31 轮持续交替**（30s 二次捕获）、PS 读回 DATA_RO（与生成 BSP 头文件交叉核对）、收尾保持 RUNNING、无残留进程。硬门禁逐条自查通过。环境观察：黑盒运行在仓库根产生 `vivado_pl/` 生成目录（Vivado 默认行为），已加入 .gitignore。
 
+> **阶段⑥ 记录（2026-08-15/16，含整改轮）**：
+> 首轮 Agent2 终验 **BLOCKED**（产品缺口，非智能体失败）：S5 实现期自误（make_external 臆造引脚名 → 悬空端口）+ 服务器端崩溃恢复残留（close 失败 → recover 不清 backend/owner 字段 → `UNOWNED_WORKER_PRESENT` 永久阻断），Agent2 穷尽公开恢复路径后按 Skill 停止、未越权（证据 `D:\_b11_p4_external\agent2_20260815\`）。
+> ⑥.1 整改轮（报告 [B11_phase6_1_fix_report.md](development/mcp/B11_phase6_1_fix_report.md)）：recovery 补清全部 owner/instance 残留（含 IDLE 死锁态愈合），门禁本身零改动（活 worker 仍拒）；Skill 新增「引脚/接口名必须真实查询、不得臆造」决策规则；真实进程级复现 Agent2 失败链 + 9 新测试；回归 **1426 collected / 1385 passed / 1 skipped / 40 deselected / 0 failed**。
+> **Agent2 重验 PASS（2026-08-16，冻结基线 v2）**：全新无记忆智能体独立完成全流程——313 个 operation（280 SUCCEEDED / 33 FAILED 均有据恢复）、三 Manifest、Consistency 12/12、UART 25 行读回全对 + `LED_E2E_PASS` 一次 + **PASS 后继续 9 行交替**、收尾恢复运行态后新捕获仍交替（`uart_resume_after_cleanup.txt`）、PS 读回 DATA_RO、无残留进程；硬门禁 6 条逐条自查通过；隔离区 `D:\_b11_p4_external\agent2b_20260815\`，33,829 条 MCP 调用全量可解析。
+> **B11 完成结论**：泛化框架（零外设字样 Skill S0–S8 + 103 工具 MCP）经「Agent1 白盒 → Agent3 阶段黑盒 → 用户硬件确认 → Agent2 终验黑盒」全链路验证，两个不同全新上下文智能体均仅凭 Skill+需求+板卡事实独立完成真实硬件项目。遗留债：N1（ps_mem_read 解析 gap）、N2（OUTCOME_UNKNOWN+IDLE 通道死锁）均为 P2 已记录；`.mcp.json` 空注册形态待后续决策。
+
 ## 6. 当前工作
 
 - B00–B03：✅ COMPLETE / FROZEN。
@@ -359,7 +365,7 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 - B08：✅ Agent1 R6 白盒硬件 PASS；作为功能证据保留。
 - B09：✅ COMPLETE；O7 R3 全新 Agent2 公开 MCP 纯黑盒 PASS，契约勘误已关闭；R1/R2 失败作为历史整改证据保留。
 - B10：✅ O8 冻结包 COMPLETE（2026-08-14）；用户已确认 GPIO v1 稳定基线；发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)；下一切片方向已由 B11 承接（方向重定：泛化框架黑盒验证）。
-- B11：⏳ 阶段①②③④⑤ COMPLETE（2026-08-14/15）：泛化 Skill `skills/zynq_dev/`（零字样门禁）；MCP 103 工具；阶段③真板 PASS（[终版报告](../tests/B11_phase3_final_report.md)）；⑤用户确认 6 灯 1s 交替（含 PS 2 灯）；④ Agent3 阶段黑盒 PASS（隔离区 `D:\_b11_p4_external\agent3_20260815\`，输入冻结 [B11_phase4_blackbox_basis.md](../tests/B11_phase4_blackbox_basis.md)）。阶段⑥ Agent2 终验黑盒待启动；规划见 [B11_plan.md](development/mcp/B11_plan.md)。
+- B11：✅ **COMPLETE（2026-08-16）**：全六阶段闭环——泛化 Skill `skills/zynq_dev/`（零字样）、MCP 103 工具、阶段③真板 PASS、⑤用户确认 6 灯 1s 交替、④ Agent3 黑盒 PASS、⑥ Agent2 终验黑盒 PASS（首轮 BLOCKED→⑥.1 修复→重验 PASS，冻结基线见 [B11_phase4_blackbox_basis.md](../tests/B11_phase4_blackbox_basis.md)）；规划见 [B11_plan.md](development/mcp/B11_plan.md)。
 - Execution Observation Contract：✅ [v1.0 COMPLETE / FROZEN](development/mcp/B09_execution_observation_contract.md)。
 - 总体完善方案：[O1–O6 COMPLETE / FROZEN；O7 R3 PASS；O8 冻结包已交付（2026-08-14，见 B10 发布清单）](development/mcp/B09_execution_observation_implementation_plan.md)。
 - O1冻结证据：[B09_O1_completion_report.md](development/mcp/B09_O1_completion_report.md)。
