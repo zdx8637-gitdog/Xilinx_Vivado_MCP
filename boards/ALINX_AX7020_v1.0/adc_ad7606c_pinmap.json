@@ -1,0 +1,71 @@
+{
+  "$schema_note": "AD7606C-16 (Lingzhi 16Bit@1MSPS_ADC V1.3) <-> adapter board <-> ALINX AX7020 J11 pin map. USER-CONFIRMED: letter pairs map in module J2 row order: (A|B)=OSI1|OSI0, (C|D)=SER|OSI2, (E|F)=CONV|STBY; remaining pairs extrapolated by the same rule.",
+  "board": "ALINX AX7020 (XC7Z020-CLG400I-2)",
+  "adc_module": "Lingzhi Electronics AD7606C-16 8ch 1Msps ADC module V1.3 (silk 16Bit@1MSPS_ADC V1.3)",
+  "interposer": "40pin 2x20 adapter board, letter grid A..Z,a..h = J10/J11 40-pin positions (1:1 row order)",
+  "connector": "J11 (recommended, all BANK35=3.3V)",
+  "confidence": {
+    "status": "FROZEN - user confirmed mapping correct (2026 session)",
+    "j10_j11_pinout": "CONFIRMED (ALINX tutorial PDF pages 55-58)",
+    "letter_grid_positions": "CONFIRMED (photos: rows +5V/GND then (A|B)..(g|h) then GND/GND, NC/NC)",
+    "adc_j2_signal_order": "CONFIRMED (Lingzhi user manual 3.4 + schematic V1.3)",
+    "letter_to_signal": "CONFIRMED by user: letter pairs = J2 row order direct connect"
+  },
+  "mapping": [
+    {"letter": "A", "signal": "OSI1", "j11_pin": 3, "fpga_pin": "F17", "io": "IO_L6N_T0_35", "dir": "out"},
+    {"letter": "B", "signal": "OSI0", "j11_pin": 4, "fpga_pin": "F16", "io": "IO_L6P_T0_35", "dir": "out"},
+    {"letter": "C", "signal": "SER", "j11_pin": 5, "fpga_pin": "F20", "io": "IO_L15N_T2_35", "dir": "out"},
+    {"letter": "D", "signal": "OSI2", "j11_pin": 6, "fpga_pin": "F19", "io": "IO_L15P_T2_35", "dir": "out"},
+    {"letter": "E", "signal": "CONV", "j11_pin": 7, "fpga_pin": "G20", "io": "IO_L18N_T2_35", "dir": "out"},
+    {"letter": "F", "signal": "STBY", "j11_pin": 8, "fpga_pin": "G19", "io": "IO_L18P_T2_35", "dir": "out"},
+    {"letter": "G", "signal": "REST", "j11_pin": 9, "fpga_pin": "H18", "io": "IO_L14N_T2_35", "dir": "out"},
+    {"letter": "H", "signal": "WR", "j11_pin": 10, "fpga_pin": "J18", "io": "IO_L14P_T2_35", "dir": "out"},
+    {"letter": "I", "signal": "CS_N", "j11_pin": 11, "fpga_pin": "L20", "io": "IO_L9N_T1_35", "dir": "out"},
+    {"letter": "J", "signal": "RD/CK", "j11_pin": 12, "fpga_pin": "L19", "io": "IO_L9P_T1_35", "dir": "out"},
+    {"letter": "K", "signal": "FR_D", "j11_pin": 13, "fpga_pin": "M20", "io": "IO_L7N_T1_35", "dir": "out"},
+    {"letter": "L", "signal": "BUSY", "j11_pin": 14, "fpga_pin": "M19", "io": "IO_L7P_T1_35", "dir": "in"},
+    {"letter": "M", "signal": "DB1", "j11_pin": 15, "fpga_pin": "K18", "io": "IO_L12N_T1_35", "dir": "in"},
+    {"letter": "N", "signal": "DB0", "j11_pin": 16, "fpga_pin": "K17", "io": "IO_L12P_T1_35", "dir": "in"},
+    {"letter": "O", "signal": "DB3", "j11_pin": 17, "fpga_pin": "J19", "io": "IO_L10N_T1_35", "dir": "in"},
+    {"letter": "P", "signal": "DB2", "j11_pin": 18, "fpga_pin": "K19", "io": "IO_L10P_T1_35", "dir": "in"},
+    {"letter": "Q", "signal": "DB5", "j11_pin": 19, "fpga_pin": "H20", "io": "IO_L17N_T2_35", "dir": "in"},
+    {"letter": "R", "signal": "DB4", "j11_pin": 20, "fpga_pin": "J20", "io": "IO_L17P_T2_35", "dir": "in"},
+    {"letter": "S", "signal": "DB7", "j11_pin": 21, "fpga_pin": "L17", "io": "IO_L11N_T1_35", "dir": "in"},
+    {"letter": "T", "signal": "DB6", "j11_pin": 22, "fpga_pin": "L16", "io": "IO_L11P_T1_35", "dir": "in"},
+    {"letter": "U", "signal": "DB9", "j11_pin": 23, "fpga_pin": "M18", "io": "IO_L8N_T1_35", "dir": "in"},
+    {"letter": "V", "signal": "DB8", "j11_pin": 24, "fpga_pin": "M17", "io": "IO_L8P_T1_35", "dir": "in"},
+    {"letter": "W", "signal": "DB11", "j11_pin": 25, "fpga_pin": "D20", "io": "IO_L4N_T0_35", "dir": "in"},
+    {"letter": "X", "signal": "DB10", "j11_pin": 26, "fpga_pin": "D19", "io": "IO_L4P_T0_35", "dir": "in"},
+    {"letter": "Y", "signal": "DB13", "j11_pin": 27, "fpga_pin": "E19", "io": "IO_L5N_T0_35", "dir": "in"},
+    {"letter": "Z", "signal": "DB12", "j11_pin": 28, "fpga_pin": "E18", "io": "IO_L5P_T0_35", "dir": "in"},
+    {"letter": "a", "signal": "DB15", "j11_pin": 29, "fpga_pin": "G18", "io": "IO_L16N_T2_35", "dir": "in"},
+    {"letter": "b", "signal": "DB14", "j11_pin": 30, "fpga_pin": "G17", "io": "IO_L16P_T2_35", "dir": "in"},
+    {"letter": "c", "signal": "SPARE", "j11_pin": 31, "fpga_pin": "H17", "io": "IO_L13N_T2_35"},
+    {"letter": "d", "signal": "SPARE", "j11_pin": 32, "fpga_pin": "H16", "io": "IO_L13P_T2_35"},
+    {"letter": "e", "signal": "SPARE", "j11_pin": 33, "fpga_pin": "G15", "io": "IO_L19N_T3_35"},
+    {"letter": "f", "signal": "SPARE", "j11_pin": 34, "fpga_pin": "H15", "io": "IO_L19P_T3_35"},
+    {"letter": "g", "signal": "SPARE", "j11_pin": 35, "fpga_pin": "J14", "io": "IO_L20N_T3_35"},
+    {"letter": "h", "signal": "SPARE", "j11_pin": 36, "fpga_pin": "K14", "io": "IO_L20P_T3_35"}
+  ],
+  "power": {
+    "j11_pin1": "GND", "j11_pin2": "+5V (module power, 5V single supply)",
+    "j11_pin37_38": "GND", "j11_pin39_40": "+3.3V (interposer marked NC - unused)"
+  },
+  "notes": [
+    "Interposer letters = J10/J11 40-pin positions 1:1 (row1 +5V/GND, rows 2-18 letters, row19 GND/GND, row20 NC/NC).",
+    "J2 row order maps to letter pairs directly: (A|B)=OSI1|OSI0 ... (a|b)=DB15|DB14. DB pairs are (odd|even).",
+    "STBY must be HIGH for normal operation (module has internal pullup; drive 1 from FPGA is safe).",
+    "Hardware mode default: OS[2:0]=000, SER=0 (parallel), range via J1 jumper (+-10V 1LSB=305.18uV / +-5V 152.59uV), output 16-bit twos complement.",
+    "J10 alternative: same letters at J10 PIN3..36: W19,W18,R14,P14,Y17,Y16,W15,V15,Y14,W14,P18,N17,U15,U14,P16,P15,U17,T16,V18,V17,T15,T14,V13,U13,W13,V12,U12,T12,T10,T11,A20,B19,B20,C20.",
+    "Official ALINX AN706 reference XDC (OS1=PIN3, OS0=PIN4, CONVST=PIN5, OS2=PIN6...) differs at SER/CONV/STBY/WR positions: AD7606C adds those pins; AN706 module is plain AD7606.",
+    "XDC file: docs/boardinformation/ad7606c_j11.xdc"
+  ],
+  "sources": [
+    "ALINX tutorial PDF D:/fpgaproject/docs/boardinformation/cource_s1_ALINX_ZYNQ(AX7020)2023开发平台FPGA教程V1.01.pdf §3.7.4/3.7.5 (J10/J11 pin tables)",
+    "ALINX official AN706 XDC D:/BaiduNetdiskDownload/AX7020_2023.1/course_s1_fpga/17_ad7606_hdmi/auto_create_project/src/constraints/ad7606_hdmi_test.xdc",
+    "Lingzhi user manual D:/fpgaproject/docs/ad7606boardinformation/AD7606C-16模块资料/AD7606C-16模块资料/使用说明/【用户使用手册】AD7606C模块_V1.3.pdf §3.4",
+    "Lingzhi schematic D:/fpgaproject/docs/ad7606boardinformation/AD7606C-16模块资料/AD7606C-16模块资料/PDF原理图/【原理图】AD7606C模块_V1.3.pdf (J2 interface)",
+    "ADI AD7606C-16 datasheet (CN Rev.0) D:/fpgaproject/docs/ad7606boardinformation/AD7606C-16模块资料/AD7606C-16模块资料/芯片手册/ADI-ad7606c-16_cn_Rev.0.pdf",
+    "User-confirmed letter pair mapping (adapter board photos + user confirmation)"
+  ]
+}

@@ -43,3 +43,7 @@ NA/
 _trash/
 Thumbs.db
 Desktop.ini
+
+# 厂商压缩包（解压内容已入库，压缩包不入库）
+*.rar
+_tmp_pdf/
