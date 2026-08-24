@@ -28,21 +28,23 @@ def test_package_file_change_changes_revision(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════ T-106 T-107
-def test_preset_sha_mismatch_at_load(tmp_path):
+def test_preset_sha_tamper_accepted_at_load(tmp_path):
+    """T-106 (B12-B03 erratum): tampered ps7_preset → load succeeds (use point validates)."""
     _clear_cache()
     pkg = _make_draft_pkg(tmp_path, "T106")
     with open(os.path.join(pkg, "ps7_preset.tcl"), "w") as f:
         f.write("# tampered")
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T106", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T106", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T106"
 
-def test_xdc_sha_mismatch_at_load(tmp_path):
+def test_xdc_sha_tamper_accepted_at_load(tmp_path):
+    """T-107 (B12-B03 erratum): tampered board.xdc → load succeeds (use point validates)."""
     _clear_cache()
     pkg = _make_draft_pkg(tmp_path, "T107")
     with open(os.path.join(pkg, "board.xdc"), "w") as f:
         f.write("# tampered")
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T107", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T107", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T107"
 
 
 # ══════════════════════════════════════════════════════════════════════ T-110

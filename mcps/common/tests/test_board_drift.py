@@ -135,55 +135,54 @@ def _fresh_pkg(tmp_path, board_id, profile_overrides=None, xdc_content=None):
     _write_content_files(pkg, board_id, xdc_content=xdc_content)
     return pkg, *_seal_package(pkg, board_id, profile_overrides=profile_overrides)
 
-# == T-201: Profile SHA drift → PROFILE_SHA256_MISMATCH ==
+# == T-201: Profile SHA drift → fingerprint change recorded (no reject) ==
 
-def test_profile_sha_drift_detected(tmp_path):
-    """Modify profile after sealing → ARTIFACT_STALE + PROFILE_SHA256_MISMATCH."""
+def test_profile_sha_drift_recorded(tmp_path):
+    """T-201 (B12-B03 erratum): profile tamper → board_profile_sha256 changes and is recorded (no reject)."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T201")
-    board_profile_load("T201", search_dirs=[pkg], allow_draft=True)
+    p1 = board_profile_load("T201", search_dirs=[pkg], allow_draft=True)
+    sha1 = p1["sha256"]
     pp = os.path.join(pkg, "board_profile_T201.json")
     with open(pp, "r") as f:
         prof = json.load(f)
     prof["ddr_physical_bytes"] = 999999999
     with open(pp, "w") as f:
         json.dump(prof, f)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T201", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "ARTIFACT_STALE"
-    assert e.value.reason_code == "PROFILE_SHA256_MISMATCH"
+    _clear_cache()
+    p2 = board_profile_load("T201", search_dirs=[pkg], allow_draft=True)
+    assert p2["sha256"] != sha1
+    assert p2["sha256"].startswith("sha256:")
 
-# == T-202: DDR configured > physical (SHA-consistent) ==
+# == T-202: DDR configured > physical (framework trusts user input) ==
 
-def test_ddr_capacity_inconsistency_rejected(tmp_path):
-    """ddr_configured=512MB > ddr_physical=256MB → CONTEXT_INVALID + DDR_CAPACITY_INCONSISTENT."""
+def test_ddr_capacity_inconsistency_accepted(tmp_path):
+    """T-202 (B12-B03 erratum): cross-field semantic inconsistency → no longer rejects."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T202", profile_overrides={
         "ddr_physical_bytes": 268435456,
         "ddr_configured_bytes": 536870912,
     })
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T202", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "CONTEXT_INVALID"
-    assert e.value.reason_code == "DDR_CAPACITY_INCONSISTENT"
+    p = board_profile_load("T202", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T202"
+    assert p["sha256"].startswith("sha256:")
 
-# == T-203: QSPI window > 16MB (SHA-consistent) ==
+# == T-203: QSPI window > 16MB (framework trusts user input) ==
 
-def test_qspi_window_inconsistency_rejected(tmp_path):
-    """qspi_linear_window=32MB > 16MB → CONTEXT_INVALID + QSPI_WINDOW_INCONSISTENT."""
+def test_qspi_window_inconsistency_accepted(tmp_path):
+    """T-203 (B12-B03 erratum): qspi window > 16MB → no longer rejects."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T203", profile_overrides={
         "qspi_linear_window_bytes": 33554432,
     })
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T203", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "CONTEXT_INVALID"
-    assert e.value.reason_code == "QSPI_WINDOW_INCONSISTENT"
+    p = board_profile_load("T203", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T203"
+    assert p["sha256"].startswith("sha256:")
 
-# == T-204: LED count vs XDC (SHA-consistent) ==
+# == T-204: LED count vs XDC (framework trusts user input) ==
 
-def test_led_count_xdc_mismatch_rejected(tmp_path):
-    """Profile says 4 LEDs, XDC has only 3 → CONTEXT_INVALID + LED_COUNT_XDC_MISMATCH."""
+def test_led_count_xdc_mismatch_accepted(tmp_path):
+    """T-204 (B12-B03 erratum): profile LED count vs XDC → no longer rejects."""
     _clear_cache()
     xdc_3 = (
         "set_property PACKAGE_PIN U18 [get_ports sys_clk]\n"
@@ -194,22 +193,20 @@ def test_led_count_xdc_mismatch_rejected(tmp_path):
         "set_property PACKAGE_PIN M15 [get_ports {led_pins[1]}]\n"
     )
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T204", xdc_content=xdc_3)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T204", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "CONTEXT_INVALID"
-    assert e.value.reason_code == "LED_COUNT_XDC_MISMATCH"
+    p = board_profile_load("T204", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T204"
+    assert p["sha256"].startswith("sha256:")
 
-# == T-205: Clock freq vs XDC (SHA-consistent) ==
+# == T-205: Clock freq vs XDC (framework trusts user input) ==
 
-def test_clock_freq_xdc_mismatch_rejected(tmp_path):
-    """Profile 50MHz, XDC -period 10ns (100MHz) → CONTEXT_INVALID + CLOCK_FREQ_XDC_MISMATCH."""
+def test_clock_freq_xdc_mismatch_accepted(tmp_path):
+    """T-205 (B12-B03 erratum): profile clock vs XDC → no longer rejects."""
     _clear_cache()
     xdc_100mhz = _dfl_xdc.replace("-period 20.000", "-period 10.000")
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T205", xdc_content=xdc_100mhz)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T205", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "CONTEXT_INVALID"
-    assert e.value.reason_code == "CLOCK_FREQ_XDC_MISMATCH"
+    p = board_profile_load("T205", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T205"
+    assert p["sha256"].startswith("sha256:")
 
 # == T-206: Version unsupported vs mismatch ==
 
@@ -297,32 +294,30 @@ def test_expected_revision_invalid_format(tmp_path):
     assert e.value.code == "INVALID_ARGUMENT"
     assert e.value.reason_code == "INVALID_SHA256"
 
-# == Extra drift tests ==
+# == Extra drift tests (B12-B03 erratum: drift no longer rejects) ==
 
-def test_sources_md_tamper_unsealed(tmp_path):
-    """SOURCES.md changed without re-seal → ARTIFACT_STALE."""
+def test_sources_md_tamper_accepted(tmp_path):
+    """B12-B03 erratum: SOURCES.md changed → load succeeds (validated at use point)."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T_SRC")
     board_profile_load("T_SRC", search_dirs=[pkg], allow_draft=True)
     with open(os.path.join(pkg, "SOURCES.md"), "a") as f:
         f.write("\n# extra")
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_SRC", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "ARTIFACT_STALE"
+    p = board_profile_load("T_SRC", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_SRC"
 
-def test_readme_md_tamper_unsealed(tmp_path):
-    """README.md changed without re-seal → ARTIFACT_STALE."""
+def test_readme_md_tamper_accepted(tmp_path):
+    """B12-B03 erratum: README.md changed → load succeeds (validated at use point)."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T_RDM")
     board_profile_load("T_RDM", search_dirs=[pkg], allow_draft=True)
     with open(os.path.join(pkg, "README.md"), "a") as f:
         f.write("\n# extra")
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_RDM", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "ARTIFACT_STALE"
+    p = board_profile_load("T_RDM", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_RDM"
 
-def test_manifest_revision_wrong_value(tmp_path):
-    """manifest_revision != compute_revision(inputs) → ARTIFACT_STALE + BAD_REVISION."""
+def test_manifest_revision_wrong_value_accepted(tmp_path):
+    """B12-B03 erratum: manifest_revision drift → load succeeds (revision read as evidence)."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T_BR")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -331,13 +326,11 @@ def test_manifest_revision_wrong_value(tmp_path):
     m["manifest_revision"] = "sha256:" + "ff" * 32
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_BR", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "ARTIFACT_STALE"
-    assert e.value.reason_code == "BAD_REVISION"
+    p = board_profile_load("T_BR", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_BR"
 
-def test_preset_sha_field_wrong(tmp_path):
-    """profile.ps7_preset_sha256 != disk → ARTIFACT_STALE + PRESET_SHA256_MISMATCH."""
+def test_preset_sha_field_wrong_accepted(tmp_path):
+    """B12-B03 erratum: profile.ps7_preset_sha256 drift → load succeeds."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T_PPS")
     pp = os.path.join(pkg, "board_profile_T_PPS.json")
@@ -346,13 +339,11 @@ def test_preset_sha_field_wrong(tmp_path):
     prof["ps7_preset_sha256"] = "sha256:" + "ff" * 32
     with open(pp, "w") as f:
         json.dump(prof, f)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_PPS", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "ARTIFACT_STALE"
-    assert e.value.reason_code == "PRESET_SHA256_MISMATCH"
+    p = board_profile_load("T_PPS", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_PPS"
 
-def test_xdc_sha_field_wrong(tmp_path):
-    """profile.xdc_sha256 != disk → ARTIFACT_STALE + XDC_SHA256_MISMATCH."""
+def test_xdc_sha_field_wrong_accepted(tmp_path):
+    """B12-B03 erratum: profile.xdc_sha256 drift → load succeeds."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T_XDC")
     pp = os.path.join(pkg, "board_profile_T_XDC.json")
@@ -361,13 +352,11 @@ def test_xdc_sha_field_wrong(tmp_path):
     prof["xdc_sha256"] = "sha256:" + "ee" * 32
     with open(pp, "w") as f:
         json.dump(prof, f)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_XDC", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "ARTIFACT_STALE"
-    assert e.value.reason_code == "XDC_SHA256_MISMATCH"
+    p = board_profile_load("T_XDC", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_XDC"
 
-def test_revision_inputs_sha_wrong(tmp_path):
-    """revision_inputs.board_profile_sha256 wrong → ARTIFACT_STALE."""
+def test_revision_inputs_sha_wrong_accepted(tmp_path):
+    """B12-B03 erratum: revision_inputs drift → load succeeds (SHA table → doc level)."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T_RIB")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -376,12 +365,11 @@ def test_revision_inputs_sha_wrong(tmp_path):
     m["revision_inputs"]["board_profile_sha256"] = "sha256:" + "ff" * 32
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_RIB", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "ARTIFACT_STALE"
+    p = board_profile_load("T_RIB", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_RIB"
 
-def test_files_sha_wrong_in_manifest(tmp_path):
-    """files[].sha256 wrong → ARTIFACT_STALE."""
+def test_files_sha_wrong_in_manifest_accepted(tmp_path):
+    """B12-B03 erratum: files[].sha256 drift → load succeeds."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T_FSW")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -392,21 +380,19 @@ def test_files_sha_wrong_in_manifest(tmp_path):
             entry["sha256"] = "sha256:" + "ff" * 32
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_FSW", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "ARTIFACT_STALE"
+    p = board_profile_load("T_FSW", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_FSW"
 
-def test_profile_extra_file_on_disk(tmp_path):
-    """Extra file → CONTEXT_INVALID + EXTRA_FILE_IN_DIR."""
+def test_profile_extra_file_on_disk_accepted(tmp_path):
+    """B12-B03 erratum: extra file in directory → load succeeds (directory seal retired)."""
     _clear_cache()
     pkg, _, _, _ = _fresh_pkg(tmp_path, "T_EFD")
     board_profile_load("T_EFD", search_dirs=[pkg], allow_draft=True)
     with open(os.path.join(pkg, "stowaway.txt"), "w") as f:
         f.write("extra")
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_EFD", search_dirs=[pkg], allow_draft=True)
-    assert e.value.code == "CONTEXT_INVALID"
-    assert e.value.reason_code == "EXTRA_FILE_IN_DIR"
+    p = board_profile_load("T_EFD", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_EFD"
+    assert p["sha256"].startswith("sha256:")
 
 def test_manifest_invalid_json(tmp_path):
     """Corrupt manifest JSON → INVALID_JSON."""
@@ -428,7 +414,7 @@ def test_env_vivado_not_found():
     assert r.reason_code == "ENV_VIVADO_NOT_FOUND"
 
 def test_recovery_after_tamper(tmp_path):
-    """After tamper detection, re-seal allows loading again."""
+    """B12-B03 erratum: tamper no longer rejects — load always succeeds and records current sha."""
     _clear_cache()
     pkg = os.path.join(str(tmp_path), "T_REC")
     os.makedirs(pkg, exist_ok=True)
@@ -438,8 +424,5 @@ def test_recovery_after_tamper(tmp_path):
     assert p1["board_id"] == "T_REC"
     with open(os.path.join(pkg, "board.xdc"), "a") as f:
         f.write("\n# tampered")
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_REC", search_dirs=[pkg], allow_draft=True)
-    _seal_package(pkg, "T_REC")
     p2 = board_profile_load("T_REC", search_dirs=[pkg], allow_draft=True)
     assert p2["board_id"] == "T_REC"

@@ -49,6 +49,50 @@ class TestSession:
         finally:
             shutil.rmtree(proj, ignore_errors=True)
 
+    def test_create_session_with_extra_file_succeeds(self, pled, monkeypatch):
+        """B12-B03 direct regression: an extra file in the board package
+        directory must NOT block create_session; the session must SUCCEED and
+        record the correct board_profile_sha256 (evidence)."""
+        import shutil as _shutil
+        import mcps.zynq_mcp.control.session as session_mod
+        import mcps.common.board_profile as bp_mod
+        from mcps.common.revision import sha256_file
+
+        l, g, lp = pled
+        proj = tempfile.mkdtemp()
+        try:
+            # Copy the real locked board package to a temp dir, then add an
+            # extra file — the exact accident from commit 12cec8f (ADC assets
+            # not listed in the frozen manifest).
+            src = Path(bp_mod.__file__).resolve().parents[2] / "boards" / "ALINX_AX7020_v1.0"
+            pkg = Path(tempfile.mkdtemp()) / "ALINX_AX7020_v1.0"
+            _shutil.copytree(str(src), str(pkg))
+            (pkg / "adc_regression_extra.txt").write_text(
+                "extra file placed by B12-B03 regression test", encoding="utf-8")
+
+            # Point the authoritative loader (session.py) at the temp copy.
+            real_bpl = bp_mod.board_profile_load
+            monkeypatch.setattr(
+                session_mod, "board_profile_load",
+                lambda bid, *a, **kw: real_bpl(bid, search_dirs=[str(pkg)], *a, **kw))
+
+            sig = request_signature("", "IDLE", "create_session",
+                {"board_id": "ALINX_AX7020_v1.0", "project_path": proj}, "")
+            commit = create_session_mutator(
+                {"board_id": "ALINX_AX7020_v1.0", "project_path": proj},
+                g.instance_id, f"op-{uuid.uuid4().hex}", sig)
+            l = commit(g, lp)
+
+            assert l.context["session_id"] != ""
+            bps = l.context.get("board_profile_sha256", "")
+            assert is_sha256(bps), f"board_profile_sha256 not valid SHA: {bps!r}"
+            # Correct sha = sha256 of the (unmodified) profile file in the copy.
+            expected = sha256_file(str(pkg / "board_profile_ALINX_AX7020_v1.0.json"))
+            assert bps == expected
+            assert bps == "sha256:a7cb97a56930d1a7903ee64e026db2f4a8a5d56e4443566e2274cb1fc8c7bc18"
+        finally:
+            shutil.rmtree(proj, ignore_errors=True)
+
     def test_new_session_clears_previous_dedup_registry(self, pled):
         """P1-B regression: a new session must NOT inherit the previous
         session's dedup_registry.

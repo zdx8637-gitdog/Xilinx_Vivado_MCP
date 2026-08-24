@@ -157,6 +157,12 @@ Agent1 首先只提交整理方案，不立即移动或删除文件。方案必�
 
 完成门禁：新会话能只凭板卡配置包完成环境预检；配置漂移会被明确拒绝。
 
+> ⚠️ B12-B03 勘误（2026-08-24）：运行时「目录封条」（目录必须恰好等于 manifest 清单）与
+> SHA 漂移校验已退役，仅保留小票（board_profile_sha256 记录）与对账（verify_consistency）。
+> 本节「配置漂移会被明确拒绝」现由 `verify_consistency` / `freeze_package` / 审计脚本承担，
+> 不再是 create_session 热路径行为。详见
+> [B12_b03_contract_simplification_erratum.md](development/mcp/B12_b03_contract_simplification_erratum.md)。
+
 ### B04：统一 zynq_mcp 基础入口 + 执行账本 + 单通道生命周期 + Vivado/PL Adapter
 
 目标：建立统一 zynq_mcp Server（唯一对智能体暴露的 MCP 入口），实现 Execution Ledger、

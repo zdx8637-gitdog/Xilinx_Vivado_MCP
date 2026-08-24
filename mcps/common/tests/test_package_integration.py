@@ -331,9 +331,11 @@ def test_fixture_not_in_production_default(monkeypatch):
 
 # -- T-406 --
 def test_cache_invalidates_on_file_change(tmp_path):
+    """T-406 (B12-B03 erratum): profile change invalidates cache; fingerprint change recorded (no reject)."""
     pkg, _ = _seal_pkg(tmp_path, "T406")
     _clear_cache()
     p1 = board_profile_load("T406", search_dirs=[pkg], allow_draft=True)
+    sha1 = p1["sha256"]
     pp = os.path.join(pkg, "board_profile_T406.json")
     with open(pp, "r") as f:
         prof = json.load(f)
@@ -341,5 +343,6 @@ def test_cache_invalidates_on_file_change(tmp_path):
     with open(pp, "w") as f:
         json.dump(prof, f)
     _clear_cache()
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T406", search_dirs=[pkg], allow_draft=True)
+    p2 = board_profile_load("T406", search_dirs=[pkg], allow_draft=True)
+    assert p2["sha256"] != sha1
+    assert p2["sha256"].startswith("sha256:")

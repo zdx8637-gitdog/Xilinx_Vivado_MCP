@@ -114,7 +114,7 @@ def board_profile_load(board_id: str, search_dirs: list[str] | None = None,
                        expected_package_revision: str | None = None) -> dict:
     from mcps.common.board_package import (
         validate_board_profile,
-        validate_package_full,
+        validate_package_runtime,
         find_manifest_status,
         compute_package_fingerprint,
         _load_manifest_from_disk,
@@ -217,19 +217,19 @@ def board_profile_load(board_id: str, search_dirs: list[str] | None = None,
             profile["package_status"] = manifest.get("status", "unknown")
             profile["package_revision"] = manifest.get("manifest_revision", "unknown")
     else:
-        # -- Package validation --
-        pkg_issues = validate_package_full(
+        # -- Package validation (B12-B03 contract simplification) --
+        # The runtime "directory seal" (directory content must exactly equal
+        # the manifest file list) and the freeze-discipline SHA cross-reference
+        # table are retired from the hot path. Only board identity and path
+        # security are enforced here; the full validation lives in
+        # validate_package_full() and the dev-time audit tool.
+        pkg_issues = validate_package_runtime(
             package_dir, board_id, manifest_name, profile)
         if pkg_issues:
             rc = _pick_reason_code_for_package_errors(pkg_issues)
-            sha_codes = {"SHA256_MISMATCH", "SHA_CROSS_REF_MISMATCH",
-                         "PRESET_SHA256_MISMATCH", "XDC_SHA256_MISMATCH",
-                         "PROFILE_SHA256_MISMATCH",
-                         "BAD_REVISION", "PACKAGE_REVISION_MISMATCH"}
-            top_code = "ARTIFACT_STALE" if rc in sha_codes else "CONTEXT_INVALID"
             raise BoardProfileError(
                 f"Package validation failed: {rc}",
-                code=top_code, reason_code=rc)
+                code="CONTEXT_INVALID", reason_code=rc)
 
         manifest = _load_manifest_from_disk(package_dir, manifest_name)
         profile["package_status"] = manifest.get("status", "unknown")

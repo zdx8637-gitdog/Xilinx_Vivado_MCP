@@ -46,19 +46,23 @@ def test_prof_sha_changes_on_modify(tmp_path):
     assert sha1 != p2["sha256"]
 
 # ══════════════════════════════════════════════════════════════════════ T-104 T-105 T-108
-def test_ps7_preset_missing_rejected(tmp_path):
+def test_ps7_preset_missing_accepted(tmp_path):
+    """T-104 (B12-B03 erratum): ps7_preset missing → validated at use point, not at load."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T104")
     os.unlink(os.path.join(pkg, "ps7_preset.tcl"))
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T104", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T104", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T104"
+    assert p["sha256"].startswith("sha256:")
 
-def test_board_xdc_missing_rejected(tmp_path):
+def test_board_xdc_missing_accepted(tmp_path):
+    """T-105 (B12-B03 erratum): board.xdc missing → validated at use point, not at load."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T105")
     os.unlink(os.path.join(pkg, "board.xdc"))
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T105", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T105", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T105"
+    assert p["sha256"].startswith("sha256:")
 
 def test_missing_required_field_rejected(tmp_path):
     _clear_cache()
@@ -250,7 +254,8 @@ def test_manifest_board_id_mismatch(tmp_path):
     with pytest.raises(BoardProfileError):
         board_profile_load("T_BIDM", search_dirs=[pkg], allow_draft=True)
 
-def test_files_missing_entry(tmp_path):
+def test_files_missing_entry_accepted(tmp_path):
+    """B12-B03 erratum: manifest missing a file entry → no longer rejects (directory seal retired)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_FME")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -259,10 +264,12 @@ def test_files_missing_entry(tmp_path):
     m["files"] = [e for e in m["files"] if e.get("path") != "board.xdc"]
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_FME", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T_FME", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_FME"
+    assert p["sha256"].startswith("sha256:")
 
-def test_files_extra_entry(tmp_path):
+def test_files_extra_entry_accepted(tmp_path):
+    """B12-B03 erratum: manifest extra file entry → no longer rejects (directory seal retired)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_FEE")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -271,10 +278,12 @@ def test_files_extra_entry(tmp_path):
     m["files"].append({"path": "bonus.txt", "sha256": "sha256:" + "ff" * 32, "role": "extra"})
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_FEE", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T_FEE", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_FEE"
+    assert p["sha256"].startswith("sha256:")
 
-def test_files_sha_vs_revision_inputs_mismatch(tmp_path):
+def test_files_sha_vs_revision_inputs_mismatch_accepted(tmp_path):
+    """B12-B03 erratum: SHA cross-ref drift → no longer rejects (freeze discipline → doc level)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_FSRI")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -283,46 +292,55 @@ def test_files_sha_vs_revision_inputs_mismatch(tmp_path):
     m["revision_inputs"]["board_xdc_sha256"] = "sha256:" + "de" * 32
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_FSRI", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T_FSRI", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_FSRI"
+    assert p["sha256"].startswith("sha256:")
 
-def test_revision_inputs_vs_disk_mismatch(tmp_path):
+def test_revision_inputs_vs_disk_mismatch_accepted(tmp_path):
+    """B12-B03 erratum: tampered board.xdc → no longer rejects (validated at use point)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_RID")
     with open(os.path.join(pkg, "board.xdc"), "a") as f:
         f.write("\n# tamper")
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_RID", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T_RID", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_RID"
+    assert p["sha256"].startswith("sha256:")
 
-def test_profile_preset_sha_vs_disk_mismatch(tmp_path):
+def test_profile_preset_sha_vs_disk_mismatch_accepted(tmp_path):
+    """B12-B03 erratum: tampered ps7_preset → no longer rejects (validated at use point)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_PPS")
     with open(os.path.join(pkg, "ps7_preset.tcl"), "w") as f:
         f.write("# tampered")
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_PPS", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T_PPS", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_PPS"
+    assert p["sha256"].startswith("sha256:")
 
 # ══════════════════════════════════════════════════════════════════════ Cache invalidation
 def test_cache_invalidates_on_preset_change(tmp_path):
+    """B12-B03 erratum: ps7_preset change invalidates cache but no longer rejects."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_CIPC")
     p = board_profile_load("T_CIPC", search_dirs=[pkg], allow_draft=True)
     rev_before = p["package_revision"]
     with open(os.path.join(pkg, "ps7_preset.tcl"), "a") as f:
         f.write("\n# change")
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_CIPC", search_dirs=[pkg], allow_draft=True)
+    p2 = board_profile_load("T_CIPC", search_dirs=[pkg], allow_draft=True)
+    assert p2["board_id"] == "T_CIPC"
+    assert p2["package_revision"] == rev_before
 
 def test_cache_invalidates_on_xdc_change(tmp_path):
+    """B12-B03 erratum: board.xdc change invalidates cache but no longer rejects."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_CIXC")
     board_profile_load("T_CIXC", search_dirs=[pkg], allow_draft=True)
     with open(os.path.join(pkg, "board.xdc"), "a") as f:
         f.write("\n# change")
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_CIXC", search_dirs=[pkg], allow_draft=True)
+    p2 = board_profile_load("T_CIXC", search_dirs=[pkg], allow_draft=True)
+    assert p2["board_id"] == "T_CIXC"
 
 def test_cache_invalidates_on_manifest_change(tmp_path):
+    """B12-B03 erratum: manifest_revision change no longer rejects (evidence read as-is)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_CIMC")
     board_profile_load("T_CIMC", search_dirs=[pkg], allow_draft=True)
@@ -332,29 +350,29 @@ def test_cache_invalidates_on_manifest_change(tmp_path):
     m["manifest_revision"] = "sha256:" + "ff" * 32
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_CIMC", search_dirs=[pkg], allow_draft=True)
+    p2 = board_profile_load("T_CIMC", search_dirs=[pkg], allow_draft=True)
+    assert p2["board_id"] == "T_CIMC"
 
 def test_cache_invalidates_on_extra_file(tmp_path):
-    """Extra file in directory → fingerprint changes → cache miss → reject."""
+    """B12-B03 erratum: extra file in directory no longer rejects (directory seal retired)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_CIEF")
     board_profile_load("T_CIEF", search_dirs=[pkg], allow_draft=True)
     with open(os.path.join(pkg, "extra.txt"), "w") as f:
         f.write("stowaway")
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_CIEF", search_dirs=[pkg], allow_draft=True)
-    assert e.value.reason_code == "EXTRA_FILE_IN_DIR"
+    p2 = board_profile_load("T_CIEF", search_dirs=[pkg], allow_draft=True)
+    assert p2["board_id"] == "T_CIEF"
+    assert p2["sha256"].startswith("sha256:")
 
 def test_cache_invalidates_on_second_profile(tmp_path):
-    """Second board_profile_*.json → fingerprint change → reject."""
+    """B12-B03 erratum: second board_profile_*.json no longer rejects (directory seal retired)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_CISP")
     board_profile_load("T_CISP", search_dirs=[pkg], allow_draft=True)
     with open(os.path.join(pkg, "board_profile_EXTRA.json"), "w") as f:
         json.dump({"board_id": "EXTRA"}, f)
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_CISP", search_dirs=[pkg], allow_draft=True)
+    p2 = board_profile_load("T_CISP", search_dirs=[pkg], allow_draft=True)
+    assert p2["board_id"] == "T_CISP"
 
 def test_cache_invalidates_on_locked_draft_conflict(tmp_path):
     """locked+draft appearing after cache → PACKAGE_STATE_CONFLICT."""
@@ -368,16 +386,16 @@ def test_cache_invalidates_on_locked_draft_conflict(tmp_path):
         board_profile_load("T_CILDC", search_dirs=[pkg], allow_draft=True)
     assert e.value.reason_code == "PACKAGE_STATE_CONFLICT"
 
-# ══════════════════════════════════════════════════════════════════════ Path security
-def test_path_backslash_rejected(tmp_path):
-    _assert_bad_path(tmp_path, "T_BS", "sub\\bad.txt")
-def test_path_absolute_drive_rejected(tmp_path):
-    _assert_bad_path(tmp_path, "T_AD", "C:/bad.txt")
-def test_path_drive_relative_rejected(tmp_path):
-    _assert_bad_path(tmp_path, "T_DR", "C:bad.txt")
-def test_path_dotdot_rejected(tmp_path):
-    _assert_bad_path(tmp_path, "T_DD", "../bad.txt")
-def test_path_duplicate_rejected(tmp_path):
+# ══════════════════════════════════════════════════════════════════════ Path security (manifest files paths → runtime no longer enforced)
+def test_path_backslash_accepted(tmp_path):
+    _assert_bad_path_accepted(tmp_path, "T_BS", "sub\\bad.txt")
+def test_path_absolute_drive_accepted(tmp_path):
+    _assert_bad_path_accepted(tmp_path, "T_AD", "C:/bad.txt")
+def test_path_drive_relative_accepted(tmp_path):
+    _assert_bad_path_accepted(tmp_path, "T_DR", "C:bad.txt")
+def test_path_dotdot_accepted(tmp_path):
+    _assert_bad_path_accepted(tmp_path, "T_DD", "../bad.txt")
+def test_path_duplicate_accepted(tmp_path):
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_DUP")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -386,8 +404,8 @@ def test_path_duplicate_rejected(tmp_path):
     m["files"].append({"path": "ps7_preset.tcl", "sha256": m["files"][1]["sha256"], "role": "dup"})
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError):
-        board_profile_load("T_DUP", search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load("T_DUP", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_DUP"
 
 # ══════════════════════════════════════════════════════════════════════ Manifest INVALID_JSON
 def test_manifest_invalid_json_rejected(tmp_path):
@@ -400,16 +418,15 @@ def test_manifest_invalid_json_rejected(tmp_path):
         board_profile_load("T_MIJ", search_dirs=[pkg], allow_draft=True)
     assert e.value.reason_code == "INVALID_JSON"
 
-# ══════════════════════════════════════════════════════════════════════ Reason code propagation
-def test_preset_sha_reason_code(tmp_path):
+# ══════════════════════════════════════════════════════════════════════ Reason code propagation (retired → now acceptance)
+def test_preset_sha_tamper_accepted(tmp_path):
+    """B12-B03 erratum: tampered ps7_preset → load succeeds (use point validates)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_RCPS")
     with open(os.path.join(pkg, "ps7_preset.tcl"), "w") as f:
         f.write("# tampered")
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_RCPS", search_dirs=[pkg], allow_draft=True)
-    assert e.value.reason_code in ("PRESET_SHA256_MISMATCH", "SHA256_MISMATCH")
-    assert e.value.code == "ARTIFACT_STALE"
+    p = board_profile_load("T_RCPS", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_RCPS"
 
 def test_missing_field_reason_code(tmp_path):
     _clear_cache()
@@ -424,7 +441,8 @@ def test_missing_field_reason_code(tmp_path):
         board_profile_load("T_RCMF", search_dirs=[pkg], allow_draft=True)
     assert e.value.reason_code == "MISSING_REQUIRED_FIELD"
 
-def test_extra_file_reason_code(tmp_path):
+def test_extra_file_manifest_entry_accepted(tmp_path):
+    """B12-B03 erratum: extra manifest file entry → load succeeds (directory seal retired)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_RCEF")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -433,11 +451,11 @@ def test_extra_file_reason_code(tmp_path):
     m["files"].append({"path": "extra.txt", "sha256": "sha256:" + "ff" * 32, "role": "extra"})
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_RCEF", search_dirs=[pkg], allow_draft=True)
-    assert e.value.reason_code == "EXTRA_FILE_IN_MANIFEST"
+    p = board_profile_load("T_RCEF", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_RCEF"
 
-def test_bad_revision_reason_code(tmp_path):
+def test_bad_revision_accepted(tmp_path):
+    """B12-B03 erratum: manifest_revision drift → load succeeds (revision read as evidence)."""
     _clear_cache()
     pkg = _make_pkg(tmp_path, "T_RCBR")
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -446,14 +464,12 @@ def test_bad_revision_reason_code(tmp_path):
     m["manifest_revision"] = "sha256:" + "ff" * 32
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError) as e:
-        board_profile_load("T_RCBR", search_dirs=[pkg], allow_draft=True)
-    assert e.value.reason_code == "BAD_REVISION"
-    assert e.value.code == "ARTIFACT_STALE"
+    p = board_profile_load("T_RCBR", search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == "T_RCBR"
 
 
 # ══════════════════════════════════════════════════════════════════════ Helpers
-def _assert_bad_path(tmp_path, board_id, bad_path):
+def _assert_bad_path_accepted(tmp_path, board_id, bad_path):
     _clear_cache()
     pkg = _make_pkg(tmp_path, board_id)
     mp = os.path.join(pkg, "package_manifest.draft.json")
@@ -462,8 +478,8 @@ def _assert_bad_path(tmp_path, board_id, bad_path):
     m["files"][1]["path"] = bad_path
     with open(mp, "w") as f:
         json.dump(m, f)
-    with pytest.raises(BoardProfileError):
-        board_profile_load(board_id, search_dirs=[pkg], allow_draft=True)
+    p = board_profile_load(board_id, search_dirs=[pkg], allow_draft=True)
+    assert p["board_id"] == board_id
 
 
 def _min_prof(board_id):

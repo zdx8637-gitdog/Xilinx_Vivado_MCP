@@ -1065,6 +1065,50 @@ def validate_package_full(package_dir: str, board_id: str,
     return issues
 
 
+def validate_package_runtime(package_dir: str, board_id: str,
+                             manifest_name: str,
+                             profile: dict) -> list[ValidationIssue]:
+    """B12-B03 contract simplification: runtime load-path validation.
+
+    Retires the runtime "directory seal" and freeze-discipline SHA table from
+    the hot path (``create_session`` → ``board_profile_load``). Under the new
+    contract:
+
+      * board_profile must exist and parse — enforced earlier by the loader
+        (``_resolve_profile_path`` + JSON parse + ``validate_board_profile``);
+      * the manifest is read for evidence only (``package_version`` /
+        ``package_revision``), never used to gate the session;
+      * the board's declared identity must still match the requested board_id;
+      * absolute/personal paths in the profile stay fail-closed (path security);
+      * extra files in the package directory, missing manifest-listed files,
+        SHA cross-reference drift, and cross-field semantic consistency are
+        NOT rejected here — they are the user's responsibility and are
+        re-checked by the dev-time audit tool (``tools/audit/b03_package_audit.py``)
+        and by ``freeze_package()``.
+
+    The full package validation remains available as ``validate_package_full``
+    for the freeze path and the audit tool.
+    """
+    issues: list[ValidationIssue] = []
+    manifest = _load_manifest_from_disk(package_dir, manifest_name)
+
+    manifest_bid = manifest.get("board_id")
+    if manifest_bid != board_id:
+        issues.append(ValidationIssue(
+            "BOARD_ID_MISMATCH", "manifest.board_id vs profile.board_id",
+            board_id, str(manifest_bid)))
+    profile_bid = profile.get("board_id")
+    if profile_bid != board_id:
+        issues.append(ValidationIssue(
+            "BOARD_ID_MISMATCH", "profile.board_id",
+            board_id, str(profile_bid)))
+
+    # Path security stays fail-closed in the hot path (no absolute/personal paths).
+    issues.extend(_validate_profile_paths(profile))
+
+    return issues
+
+
 def _validate_package_except(package_dir: str, board_id: str,
                               manifest_name: str, profile: dict,
                               exclude_from_extra_files: set[str]) -> list[ValidationIssue]:
