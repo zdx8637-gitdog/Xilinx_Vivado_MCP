@@ -376,6 +376,8 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 
 > **立项记录（2026-08-24）**：用户确认 PL UART 已断、信息统一走 PS UART；授权启动 B12-A1（DMA 验证）。DSH 宿主迁移为未来独立事项（Skill 不写宿主专属假设、`skills/zynq_dev/` 保持唯一技能源）。
 
+> **B12-N3 整改（2026-08-24）**：公开 MCP 新增 `ps_start_hw_server`（hw_server 本地自启、detached、幂等、有界就绪等待；只启不停，环境重启后 hw_server 消失时可自足恢复），工具数 103→104；Skill `phases/7` 7a 预检表加一行自启诊断；含 host_live 真实启动测试。报告 [B12_n3_hwserver_tool_report.md](development/mcp/B12_n3_hwserver_tool_report.md)。
+
 ## 6. 当前工作
 
 - B00–B03：✅ COMPLETE / FROZEN。

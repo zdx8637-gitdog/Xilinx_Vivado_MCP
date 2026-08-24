@@ -804,9 +804,9 @@ class TestR3Runner:
         assert r["status"] == "success"
 
     def test_Xlist_tools_is_ten(self):
-        """E007: R3.1-C list_tools=10 (9 control + 1 PL domain). B05 adds platform_generate → 11. B06 first batch adds 24 PS → 35. B06 2nd batch adds 11 BSP → 46. B07 PL bridge adds 26 → 72. B06 third batch (9 download+debug) → 81. B01 UART capture adds 3 → 84. B01 UART diagnostics adds 1 → 85. B01 Phase 4 verify_consistency adds 1 → 86. B01 Phase 6 observation adds 1 → 87. B05-R2 platform atoms add 14 → 101. B11 phase 2 removes platform_generate → 100 (9 control + 91 domain). B11 ③.1 adds assign_addresses/make_external/synthesize → 103 (9 control + 94 domain)."""
+        """E007: R3.1-C list_tools=10 (9 control + 1 PL domain). B05 adds platform_generate → 11. B06 first batch adds 24 PS → 35. B06 2nd batch adds 11 BSP → 46. B07 PL bridge adds 26 → 72. B06 third batch (9 download+debug) → 81. B01 UART capture adds 3 → 84. B01 UART diagnostics adds 1 → 85. B01 Phase 4 verify_consistency adds 1 → 86. B01 Phase 6 observation adds 1 → 87. B05-R2 platform atoms add 14 → 101. B11 phase 2 removes platform_generate → 100 (9 control + 91 domain). B11 ③.1 adds assign_addresses/make_external/synthesize → 103 (9 control + 94 domain). B12-N3 adds ps_start_hw_server → 104 (9 control + 95 domain)."""
         from mcps.zynq_mcp.control.capabilities import ALL_TOOLS
-        assert len(ALL_TOOLS) == 103
+        assert len(ALL_TOOLS) == 104
 
     @pytest.mark.asyncio
     async def test_long_run_does_not_fabricate_heartbeat(self, rtg):

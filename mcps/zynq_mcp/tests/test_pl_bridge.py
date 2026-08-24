@@ -952,8 +952,9 @@ class TestRegistrationConsistency:
         from mcps.zynq_mcp.control.capabilities import ALL_TOOLS
         # B11 phase 2: platform_generate removed → 100 total (9 control + 91
         # domain); was 101 with the shortcut. B11 ③.1: + assign_addresses /
-        # make_external / synthesize → 103 (9 control + 94 domain).
-        assert len(ALL_TOOLS) == 103
+        # make_external / synthesize → 103 (9 control + 94 domain). B12-N3:
+        # + ps_start_hw_server → 104 (9 control + 95 domain).
+        assert len(ALL_TOOLS) == 104
 
 
 # ── _execute bridge injection (production CommandRunner path) ─────────────

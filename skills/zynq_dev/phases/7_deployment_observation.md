@@ -17,6 +17,7 @@ Controller 持有的调试状态都绑定到该 session）。
 | 检查项 | 工具类别 | 不可用时 |
 |--------|----------|---------|
 | hw_server | `ps_connect_hw_server` | 标记 `BLOCKED: HW_SERVER` |
+| hw_server（未运行时） | `ps_start_hw_server`（本地自启，幂等，只启不停） | 自启失败按 ENV_ERROR 诊断（`HW_SERVER_NOT_FOUND` / `HW_SERVER_START_TIMEOUT`）→ 标记 `BLOCKED: HW_SERVER` |
 | JTAG 链 | `ps_list_targets` → ARM Cortex-A9 DAP 存在 | 标记 `BLOCKED: NO_ARM_DAP` |
 | UART | `ps_list_serial_ports`（按 `port` 字段判断，勿用字符串包含判断） | 标记 `BLOCKED: NO_UART` |
 
@@ -87,7 +88,7 @@ start（CPU 执行前）→ wait（markers 全部来自需求文档，`<PASS_MAR
 
 ## 涉及的工具类别
 
-- ps JTAG command：`ps_connect_hw_server`、`ps_list_targets`、`ps_select_target`、
+- ps JTAG command：`ps_connect_hw_server`、`ps_start_hw_server`、`ps_list_targets`、`ps_select_target`、
   `ps_halt_target`、`ps_reset_target`、`ps_initialize_ps`、`ps_load_hardware`、
   `ps_download_elf`、`ps_run_target`、`ps_ensure_arm_accessible`、
   `ps_list_serial_ports`、`ps_diagnose_uart_clock`；

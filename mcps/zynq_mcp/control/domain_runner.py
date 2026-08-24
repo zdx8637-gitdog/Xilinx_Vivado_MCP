@@ -46,7 +46,9 @@ _PS_XSCT_TOOL_NAMES = frozenset({
 # ps_read_elf_info parses the ELF header in pure Python; starting XSCT here
 # would recreate an XSCT worker after ps_compile has intentionally shut it
 # down, then make the following XSDB/JTAG operation an illegal backend switch.
-_PS_LOCAL_DIRECT_TOOLS = frozenset({"ps_read_elf_info"})
+# ps_start_hw_server (B12-N3) locally spawns the detached hw_server itself —
+# no XSDB shell, no EDA worker.
+_PS_LOCAL_DIRECT_TOOLS = frozenset({"ps_read_elf_info", "ps_start_hw_server"})
 
 # Historical classification retained only for compatibility component tests.
 # The formal server path launches through VivadoExecutionFacade and polls real

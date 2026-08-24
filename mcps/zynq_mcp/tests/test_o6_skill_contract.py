@@ -234,7 +234,7 @@ def test_skill_public_workflow_tools_are_registered() -> None:
     # contract — it must not be registered, and the skill must not reference
     # it. The contract is the atom sequence (12 command atoms + 2 query atoms).
     assert "platform_generate" not in public_names
-    assert len(CONTROL_TOOLS) + len(DOMAIN_TOOLS) == 103  # 9 control + 94 domain (B11 ③.1: +3 platform atoms)
+    assert len(CONTROL_TOOLS) + len(DOMAIN_TOOLS) == 104  # 9 control + 95 domain (B11 ③.1: +3 platform atoms; B12-N3: +1 ps_start_hw_server)
     # The generalized skill must not reference the specialized shortcut tool
     # (GPIO-fixed, removed in B11 phase 2): the contract is the atom sequence.
     # Whole-word match so platform_generate_wrapper / platform_export_manifest

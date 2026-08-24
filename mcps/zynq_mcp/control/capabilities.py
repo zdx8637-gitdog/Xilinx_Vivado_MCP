@@ -41,6 +41,11 @@ DOMAIN_TOOLS: list[Tool] = [
     # and stripped by the dispatcher before reaching the domain function.
     Tool(name="ps_connect_hw_server", description="Connect to the JTAG hw_server (idempotent)",
          inputSchema={"type": "object", "properties": {"url": {"type": "string"}}}),
+    # B12-N3: local hw_server auto-start (process-free, detached, idempotent).
+    # Fills the self-sufficiency gap — ps_connect_hw_server only connects to an
+    # existing instance; after an environment restart nothing is listening.
+    Tool(name="ps_start_hw_server", description="Locally start the JTAG hw_server if not already listening (detached, idempotent, bounded readiness wait; only starts, never stops)",
+         inputSchema={"type": "object", "properties": {"url": {"type": "string"}, "exe_path": {"type": "string"}}}),
     Tool(name="ps_disconnect_hw_server", description="Disconnect from the JTAG hw_server (idempotent)",
          inputSchema={"type": "object", "properties": {}}),
     Tool(name="ps_list_targets", description="List all targets on the JTAG chain",
@@ -366,7 +371,7 @@ DOMAIN_TOOLS: list[Tool] = [
     Tool(name="platform_export_manifest", description="Re-export the structured platform manifest JSON from the open BD (standalone, idempotent); requires a ready BD plus existing wrapper + XSA under {project_path}; default path {project_path}/manifests/platform/sha256_<rev>.json",
          inputSchema={"type": "object", "properties": {
              "path": {"type": "string"}}, "additionalProperties": False}),
-]  # R3.1-C + B05 + B06 first batch (22 PS) + B06 second batch (11 BSP) + B06 third batch (9 download/debug) + B07 PL bridge (26) + B01 UART capture (3) + B01 Phase 4 verify_consistency (1) + B01 UART diagnostics (1) + B01 Phase 6 observation (1) + B05-R2 platform atoms (14) + B11 ③.1 platform atoms (3) + ps_ensure_arm_accessible (1)
+]  # R3.1-C + B05 + B06 first batch (22 PS) + B06 second batch (11 BSP) + B06 third batch (9 download/debug) + B07 PL bridge (26) + B01 UART capture (3) + B01 Phase 4 verify_consistency (1) + B01 UART diagnostics (1) + B01 Phase 6 observation (1) + B05-R2 platform atoms (14) + B11 ③.1 platform atoms (3) + ps_ensure_arm_accessible (1) + B12-N3 ps_start_hw_server (1)
 
 def _inject_ps_session_schema(tool: Tool) -> Tool:
     """Expose the transport session contract that dispatcher enforces.
@@ -415,7 +420,7 @@ def build_capabilities(instance_role: str = "primary",
         "domains": {
             "platform":   {"implemented": 17, "planned": 14, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},  # B05-R2 atoms(14) + B11 ③.1 assign_addresses/make_external/synthesize(17); platform_generate removed B11 phase 2
             "pl":         {"implemented": 27, "planned": 12, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},
-            "ps":         {"implemented": 48, "planned": 19, "status": "bridge_ready"},
+            "ps":         {"implemented": 49, "planned": 19, "status": "bridge_ready"},
             "control":    {"implemented": len(CONTROL_TOOLS), "total": len(CONTROL_TOOLS)},
             "observation": {"implemented": 1, "total": 4},
             "recovery":   {"implemented": 2, "total": 2},

@@ -43,7 +43,7 @@ from mcps.zynq_mcp.control.session import (
 from mcps.zynq_mcp.control.capabilities import build_capabilities, ALL_TOOLS
 from mcps.zynq_mcp.domains.ps import (
     jtag_target, target_control, memory_access, target_recovery, ps_bsp,
-    debug_session, uart_capture, uart_diagnostics,
+    debug_session, uart_capture, uart_diagnostics, hw_server_start,
 )
 # B06 second batch: BSP/Build tool names run on the XSCT shell (XsctBridge)
 # and keep project_path as a real argument. Single source in domain_runner.
@@ -103,6 +103,8 @@ _PS_TOOL_NAMES = frozenset({
     "ps_get_build_status", "ps_read_elf_info",
     "ps_start_uart_capture", "ps_wait_uart_capture", "ps_stop_uart_capture",
     "ps_diagnose_uart_clock",
+    # B12-N3 — local hw_server auto-start (process-free, no EDA worker)
+    "ps_start_hw_server",
     # B06 third batch — download + debug (registered in capabilities, now routable)
     "ps_download_elf", "ps_write_uart",
     "ps_debug_start", "ps_debug_close",
@@ -938,6 +940,8 @@ _PS_TOOL_MAP = {
     # UART baud registers, computes the actual baud rate. Requires the target
     # to be halted (the caller halts before calling).
     "ps_diagnose_uart_clock": (uart_diagnostics, "diagnose_uart_clock"),
+    # B12-N3 — local hw_server auto-start (process-free; bridge is always None)
+    "ps_start_hw_server": (hw_server_start, "start_hw_server"),
     # B06 second batch — BSP/Build.  XSCT-backed tools keep project_path in
     # the forwarded arguments (see _dispatch_ps); ps_read_elf_info is a
     # process-free pure-Python parser and intentionally does not.

@@ -54,6 +54,10 @@ _REASON_TO_CODE = {
     "BRIDGE_NOT_READY": ErrorCode.ENV_ERROR,
     "CONNECT_FAILED": ErrorCode.ENV_ERROR,
     "INVALID_URL": ErrorCode.INVALID_ARGUMENT,
+    # hw_server local auto-start (B12-N3)
+    "HW_SERVER_NOT_FOUND": ErrorCode.ENV_ERROR,
+    "HW_SERVER_START_FAILED": ErrorCode.TOOL_ERROR,
+    "HW_SERVER_START_TIMEOUT": ErrorCode.TOOL_ERROR,
     "NOT_CONNECTED": ErrorCode.JTAG_ERROR,
     "DISCONNECT_FAILED": ErrorCode.JTAG_ERROR,
     # enumeration / selection
