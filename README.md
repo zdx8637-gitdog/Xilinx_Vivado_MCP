@@ -45,6 +45,7 @@
 | B09 | ✅ COMPLETE（PUBLIC MCP BLACK-BOX PASS） | 全新 Agent2 仅用 Skill + 公开 MCP 完成 P1–P6；Consistency 12/12、UART 8/8、`GPIO_E2E_PASS`，边界与清理审计通过；契约勘误已关闭 |
 | B10 | ✅ COMPLETE（O8 冻结包已交付） | 用户已确认 GPIO v1 稳定基线（2026-08-14）；发布清单见 [B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；下一切片方向已由 B11 承接 |
 | B11 | ✅ COMPLETE（全六阶段闭环） | 泛化框架黑盒验证：泛化 Skill `skills/zynq_dev/`、MCP 103 工具；③真板 PASS、⑤用户确认 6 灯 1s 交替、④ Agent3 黑盒 PASS、⑥ Agent2 终验黑盒 PASS（输入冻结见 [B11_phase4_blackbox_basis.md](docs/development/tests/B11_phase4_blackbox_basis.md)）；规划见 [B11_plan.md](docs/development/mcp/B11_plan.md) |
+| B12 | ⏳ A1（DMA 环回）白盒+黑盒 PASS | 数据采集链路（AD7606C-16）：A1 白盒真板 PASS（[报告](docs/development/tests/B12_a1_whitebox_rerun_report.md)）+ 黑盒 PASS（冻结 [B12_a1_blackbox_basis.md](docs/development/tests/B12_a1_blackbox_basis.md)）；A2 低速采集 + UART 待焊接；B13 TCP 高速后置 |
 
 当前O1冻结基线（2026-08-12）：`ALL_TOOLS=101`；`mcps` 1264 collected；O1专项 24 passed；最终非硬件回归 1225 passed / 1 skipped / 38 deselected。另行真实入口验证 12 passed；其余26项host/device-live未在O1重复执行。
 

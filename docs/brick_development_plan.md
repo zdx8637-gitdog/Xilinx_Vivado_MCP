@@ -73,7 +73,7 @@ development/tests/B09_gpio_agent2_blackbox_report.md
 | B09 | Agent2 在干净环境完成黑盒复现 | Tests | ✅ **COMPLETE（公开 MCP 纯黑盒 PASS）** |
 | B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ✅ **O8 冻结包 COMPLETE（2026-08-14）；下一切片方向已由 B11 承接** |
 | B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ✅ **COMPLETE（2026-08-16）：全六阶段闭环，Agent2 终验黑盒 PASS** |
-| B12 | 数据采集链路（AD7606C-16）：A1 DMA 环回验证 → A2 低速采集 + UART → B13 TCP 高速 | MCP + PL + PS | ⏳ **立项（2026-08-24）；A1 白盒进行中** |
+| B12 | 数据采集链路（AD7606C-16）：A1 DMA 环回验证 → A2 低速采集 + UART → B13 TCP 高速 | MCP + PL + PS | ⏳ **A1（DMA 环回）白盒+黑盒 PASS（2026-08-25）；A2 待用户焊接** |
 
 ## 5. 逐 Brick 交付与门禁
 
@@ -376,6 +376,11 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 
 > **立项记录（2026-08-24）**：用户确认 PL UART 已断、信息统一走 PS UART；授权启动 B12-A1（DMA 验证）。DSH 宿主迁移为未来独立事项（Skill 不写宿主专属假设、`skills/zynq_dev/` 保持唯一技能源）。
 
+> **A1 完成记录（2026-08-24/25，白盒+黑盒双 PASS）**：
+> 前置整改：B03 合同简化（封条退役、留小票与对账，勘误 [B12_b03_contract_simplification_erratum.md](development/mcp/B12_b03_contract_simplification_erratum.md)；白盒首轮 BLOCKED 证据 [B12_a1_whitebox_report.md](../tests/B12_a1_whitebox_report.md)）；N3（`ps_start_hw_server` 工具，104 工具，报告 [B12_n3_hwserver_tool_report.md](development/mcp/B12_n3_hwserver_tool_report.md)）。
+> 白盒（报告 [B12_a1_whitebox_rerun_report.md](../tests/B12_a1_whitebox_rerun_report.md)）：真板 PASS——FAULT 注入 `DMA_LOOP_FAIL` 机读 FAIL；干净构建 4 轮 OK + `DMA_LOOP_PASS` + 374 轮持续循环；发现 AXI DMA 简单模式单次 16383 字节上限 → 8KB 分块绕行（R1，P2）。
+> 黑盒（冻结基线 [B12_a1_blackbox_basis.md](../tests/B12_a1_blackbox_basis.md)，隔离区 `D:\_b12_a1_external\agent3_20260825\`）：全新无记忆智能体独立复现 **PASS**——302 次公开 MCP 调用、127/140 操作 SUCCEEDED（11 个发现期失败按 S8 恢复）、Consistency 12/12、4 轮 OK + `DMA_LOOP_PASS` 一次 + 持续循环（收尾后复读第 53 轮 OK）、目标保持 RUNNING、硬门禁逐条自查通过。黑盒同样独立命中 16383 字节上限并以 8KB 分块解决——泛化 Skill 的排障知识在全新上下文可复现。
+
 > **B12-N3 整改（2026-08-24）**：公开 MCP 新增 `ps_start_hw_server`（hw_server 本地自启、detached、幂等、有界就绪等待；只启不停，环境重启后 hw_server 消失时可自足恢复），工具数 103→104；Skill `phases/7` 7a 预检表加一行自启诊断；含 host_live 真实启动测试。报告 [B12_n3_hwserver_tool_report.md](development/mcp/B12_n3_hwserver_tool_report.md)。
 
 ## 6. 当前工作
@@ -389,7 +394,7 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 - B09：✅ COMPLETE；O7 R3 全新 Agent2 公开 MCP 纯黑盒 PASS，契约勘误已关闭；R1/R2 失败作为历史整改证据保留。
 - B10：✅ O8 冻结包 COMPLETE（2026-08-14）；用户已确认 GPIO v1 稳定基线；发布清单见 [B10_freeze_manifest.md](development/mcp/B10_freeze_manifest.md)；下一切片方向已由 B11 承接（方向重定：泛化框架黑盒验证）。
 - B11：✅ **COMPLETE（2026-08-16）**：全六阶段闭环——泛化 Skill `skills/zynq_dev/`（零字样）、MCP 103 工具、阶段③真板 PASS、⑤用户确认 6 灯 1s 交替、④ Agent3 黑盒 PASS、⑥ Agent2 终验黑盒 PASS（首轮 BLOCKED→⑥.1 修复→重验 PASS，冻结基线见 [B11_phase4_blackbox_basis.md](../tests/B11_phase4_blackbox_basis.md)）；规划见 [B11_plan.md](development/mcp/B11_plan.md)。
-- B12：⏳ 立项（2026-08-24）：A1 DMA 环回验证白盒进行中（需求 [B12_a1_requirement_draft.md](../tests/B12_a1_requirement_draft.md)）；A2 低速采集 + UART 等用户焊接；B13 TCP 高速后置。
+- B12：⏳ A1（DMA 环回）白盒+黑盒 PASS（2026-08-24/25，含 B03 合同简化与 N3 hw_server 自启两轮整改）；A2 低速采集 + UART 待用户焊接；B13 TCP 高速后置。需求 [B12_a1_requirement_draft.md](../tests/B12_a1_requirement_draft.md)。
 - Execution Observation Contract：✅ [v1.0 COMPLETE / FROZEN](development/mcp/B09_execution_observation_contract.md)。
 - 总体完善方案：[O1–O6 COMPLETE / FROZEN；O7 R3 PASS；O8 冻结包已交付（2026-08-14，见 B10 发布清单）](development/mcp/B09_execution_observation_implementation_plan.md)。
 - O1冻结证据：[B09_O1_completion_report.md](development/mcp/B09_O1_completion_report.md)。
