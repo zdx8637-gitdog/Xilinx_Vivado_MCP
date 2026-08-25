@@ -43,7 +43,7 @@
 
 - **用户授权（2026-08-25，最新）**：修复 → 白盒 v2 → 黑盒**按序自动推进**。修复完成后审查，无问题即提交推送并准备环境开启白盒 v2；白盒完成后审查，无大问题即准备环境开启 **A2 黑盒**；有问题**保守处理**（影响黑盒的修掉再开黑盒）；**仅遇重大问题才停止等待用户指示**。
 - **修复轮子代理 5264308c**：✅ **已完成并经主代理审查通过（2026-08-25）**——D1/D-B/D-E/D-A/D-C 全部落地，报告 `docs/development/mcp/B12_a2_flow_fix_report.md`；回归主代理亲自复核 1445 collected / 1403 passed / 1 skipped / 41 deselected / 0 failed（≥基线 1393）。注意：D-D 未修（按用户口径=测试协议问题，需求 v2 确定性协议已根治）；D-A/D-C 证据 MOCK_ONLY，将由白盒 v2 真板实跑验证。
-- **白盒 v2 子代理 40bcfd5c**：✅ **已放行（2026-08-25）**——S0–S8 全流程，方案乙，证据 = 数据文件 + 8 通道原始值波形图 PNG + measurement.json + A2_PASS；报告 `docs/development/tests/B12_a2_whitebox_v2_report.md`。**第五轮：UART 全通（READY banner 正常打印）**；S7 卡点真根因 = RTL 多驱动 bug（`snap_armed` 两个 always 块同驱，快照锁存永不置位；BOOTDIAG 证据：读/写路径均活、仅 SNAP 不锁存）→ RTL 已修复（并入写 FSM 单一驱动）。**第六轮已放行**：全新 project_g 一次性路径重跑（平台+PL+bitstream+PS+S6/S7/S8）。框架缺口（stage 续跑/同项目 manifest 重置）记为 P2，不修。
+- **白盒 v2 子代理 40bcfd5c**：✅ **已放行（2026-08-25）**——S0–S8 全流程，方案乙，证据 = 数据文件 + 8 通道原始值波形图 PNG + measurement.json + A2_PASS；报告 `docs/development/tests/B12_a2_whitebox_v2_report.md`。**第六轮完成：S0–S8 全绿**（project_g 全新路径；RTL 多驱动修复真板验证 SNAPSTAT=80000003；S7 采集 UPLOAD→DONE→A2_PASS；S6 12/12）。**盲测（数据推导）**：通道 = 丝印 CH6（方差 9.6e6 vs 其余 <2）、频率 = 11.0086Hz、Vpp = 2.677V（raw 8772）、8 通道 PNG CH6 干净正弦。**第七轮已放行（标定）**：核实 CONVST 分频（100MHz→应为 50000）、XTime 实测 WPTR 增量标定实际帧率（FSCAL）、按实际 FS 重算频率、分批发送拿完整 2000 帧零丢字节证据。注意：用户答案为通道 CH6（已命中）+ 频率 ~10Hz（11.0 读数待标定解释——**不得向智能体泄露答案**）。
 - **黑盒**：A2 黑盒已获条件授权（白盒 v2 通过/保守修复后启动）；启动前需准备黑盒冻结基线（照 A1 模式：需求+板卡包公开事实+Skill+公开 MCP，隔离区工作）。
 - 外部对账工具已提交推送（commit 50c7ca7）；需求 v2 已提交推送（commit c18b89c）；记忆文档 fea63fb、授权记录 5af9c2b、黑盒基线草案 4732cd6/c5294c5 均已推送。
 
