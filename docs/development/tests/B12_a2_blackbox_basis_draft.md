@@ -10,7 +10,7 @@
 | 需求文档（v2，定稿） | `docs/development/tests/B12_a2_requirement_draft.md` |
 | 板卡包公开事实面 | `boards/ALINX_AX7020_v1.0/`（README/board_profile/adc/ 事实卡+数据手册+引脚 JSON） |
 | 泛化 Skill | `skills/zynq_dev/`（SKILL.md + phases 0–8） |
-| 公开 MCP | 104 工具（`python -m mcps.zynq_mcp.server`，stdio） |
+| 公开 MCP | 105 工具（`python -m mcps.zynq_mcp.server`，stdio） |
 
 ## 2. 黑盒禁入（硬性）
 

@@ -847,6 +847,66 @@ async def pl_generate_bitstream(bridge, *, path, force=None) -> dict:
 #  Timing & utilization
 # ═══════════════════════════════════════════════════════════════════
 
+# Vivado run names that may be reset for a clean retry after a failed run.
+_RESETTABLE_RUNS = frozenset({"synth_1", "impl_1"})
+
+
+async def pl_reset_run(bridge, *, run_name, force=None) -> dict:
+    """Reset a synthesis/implementation run so a failed stage can be retried.
+
+    Vivado Tcl: `reset_run {run_name}` (add `-force` when `force` is set).
+    A failed `launch_runs synth_1`/`impl_1` leaves the run in a non-Complete
+    state; re-issuing `launch_runs` alone is refused ("run already exists /
+    not reset"), so this is the prerequisite that lets a FAILED stage be
+    re-run cleanly (the "PL retry robustness" need). It does NOT advance the
+    workflow stage and is admitted in any stage where the run is open.
+
+    `run_name` must be synth_1 or impl_1 (the two runs the PL bridge creates);
+    anything else fails closed with INVALID_ARGUMENT. Fail-closed: a bridge
+    error or a non-Complete reset output is reported, never a silent success.
+    """
+    if not isinstance(run_name, str) or not run_name.strip():
+        return _invalid("run_name must be a non-empty string")
+    name = run_name.strip()
+    if name not in _RESETTABLE_RUNS:
+        return error(
+            message=f"run_name must be one of: {', '.join(sorted(_RESETTABLE_RUNS))}",
+            code="INVALID_ARGUMENT",
+            details={"reason_code": "INVALID_ARGUMENT",
+                     "run_name": name,
+                     "supported": sorted(_RESETTABLE_RUNS)}).to_dict()
+    if force is not None and not isinstance(force, bool):
+        return _invalid("force must be a bool")
+    flag = " -force" if force else ""
+    tcl = (
+        f"if {{![llength [get_runs -quiet {name}]]}} {{\n"
+        f"  puts \"ERROR: run {name} does not exist\"\n"
+        f"}} else {{\n"
+        f"  if {{[catch {{reset_run{flag} {name}}} __rs_err]}} "
+        f"{{ puts \"ERROR: $__rs_err\" }}\n"
+        f"  else {{\n"
+        f"    set __rs_status [get_property STATUS [get_runs {name}]]\n"
+        f"    puts \"RESET_STATUS=$__rs_status\"\n"
+        f"  }}\n"
+        f"}}\n"
+    )
+    result = await _bridge_call(bridge, tcl, timeout_s=90.0)
+    if result["status"] != "success":
+        return result
+    data = result["data"]
+    if "ERROR: run " in data or "ERROR: " in data and "RESET_STATUS=" not in data:
+        return error(message="reset_run failed: "
+                             f"{[l for l in data.splitlines() if 'ERROR' in l]}",
+                     code="TOOL_ERROR",
+                     details={"reason_code": "RESET_RUN_FAILED",
+                              "run_name": name}).to_dict()
+    status = ""
+    for line in data.splitlines():
+        if line.strip().startswith("RESET_STATUS="):
+            status = line.strip().split("=", 1)[1]
+    return success(data={"run_name": name, "reset": True,
+                         "status": status or "reset"}).to_dict()
+
 async def pl_analyze_timing(bridge, *, clock=None, max_paths=None) -> dict:
     """Timing summary (WNS/TNS/WHS/THS) via report_timing_summary.
 
@@ -1180,6 +1240,7 @@ PL_TOOL_MAP: dict[str, tuple] = {
     "pl_open_checkpoint": (pl_open_checkpoint, 360.0),
     "pl_close_design": (pl_close_design, 90.0),
     "pl_generate_target": (pl_generate_target, 360.0),
+    "pl_reset_run": (pl_reset_run, 90.0),
     "pl_synthesize": (pl_synthesize, 3660.0),
     "pl_place": (pl_place, 3660.0),
     "pl_route": (pl_route, 3660.0),

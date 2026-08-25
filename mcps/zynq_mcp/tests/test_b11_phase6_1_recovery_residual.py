@@ -35,10 +35,11 @@ import pytest_asyncio
 from mcps.zynq_mcp.control.execution_ledger import (
     BACKEND_NONE, BACKEND_VIVADO,
     EXECUTION_LANE_IDLE, EXECUTION_LANE_RECOVERY_REQUIRED,
-    OP_ACCEPTED,
+    OP_ACCEPTED, OP_OUTCOME_UNKNOWN,
     WORKER_STATE_ABSENT, WORKER_STATE_DEAD, WORKER_STATE_POISONED,
     WORKER_STATE_READY,
     ChannelBusyError, ledger_read_shared, ledger_transaction, _now_iso,
+    operation_contract_fields,
 )
 from mcps.zynq_mcp.control.instance_guard import InstanceGuard
 from mcps.zynq_mcp.control.process_guard import (
@@ -525,3 +526,85 @@ class TestPhase61RealProcessChain:
         snap = await controller.ensure_backend(BACKEND_VIVADO)
         assert calls[0] == 1
         assert is_pid_alive(snap.pid)
+
+
+class TestPhase61D1Residual:
+    """D1 残留：recover 保留活 worker 时不得令其 generation 与控制器内存脱钩，
+    否则下一命令 ensure_backend 重入 _verify_current_identity 报 BACKEND_IDENTITY_MISMATCH。"""
+
+    @pytest.mark.asyncio
+    async def test_recover_keeps_live_worker_generation_then_controller_reenters(
+            self, rtg):
+        """未决 OUTCOME_UNKNOWN op + 活 worker → recover_execution 解析（保留活
+        worker 与相同 generation）→ 同一进程控制器重入 ensure_backend 成功，无
+        BACKEND_IDENTITY_MISMATCH。这是白盒 v2 ps_compile 重试报
+        BACKEND_IDENTITY_MISMATCH 的根因回归。"""
+        REAL_REV = "sha256:72191212a1bb3359d1d55096417f0d41ed772fd6b04e5fd85b2b512a7431e4d7"
+        rt, guard, path, _ = rtg
+        calls = [0]
+        controller = _controller(rtg, bridge_factories={
+            BACKEND_VIVADO: lambda: _ChildBridge(calls),
+        })
+        snap = await controller.ensure_backend(BACKEND_VIVADO)
+        pid = snap.pid
+        assert is_pid_alive(pid)
+        assert snap.worker_generation == 1
+        assert controller._generation == 1
+
+        # 构造"未决 previous op + 活 worker"状态：把 active op 写成 OUTCOME_UNKNOWN
+        # 的 previous，lane RECOVERY_REQUIRED，worker 记录保持活（gen=1）——这正是
+        # recover_execution D-E 分支要处理的场景。
+        def _orphan(ledger):
+            ledger.execution_lane = EXECUTION_LANE_RECOVERY_REQUIRED
+            # keep a valid P8 context so the post-recovery admission gate passes.
+            ledger.context = {
+                "session_id": "sid-o2", "board_id": "ALINX_AX7020_v1.0",
+                "project_path": str(rt / "project"), "current_stage": "PS_BUILD",
+                "board_package_revision": REAL_REV,
+                "expected_board_revision": REAL_REV,
+            }
+            ledger.previous_operation = {
+                "operation_id": "op-outcome", "tool_name": "ps_compile",
+                "status": OP_OUTCOME_UNKNOWN, "api_category": "command",
+                "session_id": "sid", "board_id": "ALINX_AX7020_v1.0",
+                "project_path": str(rt), "workflow_stage": "PS_BUILD",
+                "request_signature": "sig", "worker_generation": 1,
+                "input_artifact_revision": REAL_REV,
+                "accepted_at": "2020-01-01T00:00:00.000000Z",
+                "started_at": "2020-01-01T00:00:01.000000Z",
+                "finished_at": "2020-01-01T00:00:02.000000Z",
+                "output_artifact_revision": None, "completion_evidence": None,
+                "error": "boom", "progress_pct": None,
+                **operation_contract_fields(
+                    "ps_compile", "2020-01-01T00:00:00.000000Z"),
+            }
+            ledger.active_operation = None
+            return ledger
+        ledger = ledger_transaction(guard, path, _orphan)
+        assert ledger.worker["pid"] == pid
+
+        # recover_execution：保留活 worker，generation 必须保持 1（不回退/不前进）。
+        ledger = ledger_transaction(guard, path,
+                                    recovery_mutator("op-recover"))
+        assert ledger.execution_lane == EXECUTION_LANE_IDLE
+        assert ledger.previous_operation["resolved_by_recovery"] is True
+        assert ledger.worker["pid"] == pid
+        assert ledger.worker["worker_generation"] == 1, \
+            "kept-live worker generation must NOT be bumped by recovery"
+
+        # 重新准入一条命令（lane IDLE→BUSY，active op 出现），并让同一控制器重入
+        # ensure_backend：此前会因 generation 脱钩报 BACKEND_IDENTITY_MISMATCH。
+        from mcps.zynq_mcp.control.operation_service import request_signature
+        from mcps.zynq_mcp.control.execution_gate import preflight_mutator
+        op_id = "op-reenter"
+        sig = request_signature("sid", "PS_BUILD", "ps_compile", {}, REAL_REV)
+        ledger = ledger_transaction(guard, path, preflight_mutator(
+            "ps_compile", {}, "sid", "ALINX_AX7020_v1.0", str(rt),
+            op_id, sig))
+        assert ledger.active_operation["status"] == OP_ACCEPTED
+
+        snap2 = await controller.ensure_backend(BACKEND_VIVADO,
+                                                operation_id=op_id)
+        assert is_pid_alive(snap2.pid)
+        assert snap2.pid == pid  # same live backend reused, not a new process
+        assert snap2.worker_generation == 1

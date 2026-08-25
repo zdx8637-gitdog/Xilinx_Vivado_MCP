@@ -399,6 +399,71 @@ class TestBspErrorPaths:
                 assert adm["status"] == "success", f"admission failed: {adm}"
                 assert adm["data"]["status"] == "accepted"
 
+    async def test_ps_get_bsp_status_platform_name_never_outcome_unknown(
+            self, tmp_runtime_root, tmp_path):
+        """B12 D-B (extension): ps_get_bsp_status takes no domain argument, so
+        passing `platform_name` (a common wrong param) must return a stable
+        INVALID_ARGUMENT/UNSUPPORTED_ARGUMENT envelope — never a TypeError ->
+        OUTCOME_UNKNOWN -> P6 gate. This is the exact regression caught in
+        white-box v2 (mcp_calls.jsonl: get_bsp_status() got an unexpected
+        keyword argument 'platform_name')."""
+        params = _server_params(tmp_runtime_root)
+        async with stdio_client(params) as (r, w):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                tools = await _list_tools(s)
+                _skip_unless_bsp_integrated(tools)
+                sid = await _create_session(s, tmp_path)
+                res = await s.call_tool("ps_get_bsp_status", {
+                    "session_id": sid, "platform_name": "b12_a2_pf_platform",
+                    "project_path": str(tmp_path)})
+                text = res.content[0].text if res.content else ""
+                assert not text.startswith("Input validation error"), \
+                    "fix must return the project envelope, not SDK text"
+                data = json.loads(text)
+                assert data["status"] == "error"
+                assert data["error"]["code"] == "INVALID_ARGUMENT"
+                assert data["error"]["details"]["reason_code"] == \
+                    "UNSUPPORTED_ARGUMENT"
+                assert "platform_name" in data["error"]["details"]["unsupported"]
+
+    async def test_ps_compile_unsupported_arg_is_rejected(
+            self, tmp_runtime_root, tmp_path):
+        """B12 D-B (extension): ps_compile accepts only `app_name`. Passing an
+        unrelated key (e.g. `elf_path`) must return the stable envelope, not a
+        TypeError/OUTCOME_UNKNOWN."""
+        params = _server_params(tmp_runtime_root)
+        async with stdio_client(params) as (r, w):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                tools = await _list_tools(s)
+                _skip_unless_bsp_integrated(tools)
+                sid = await _create_session(s, tmp_path)
+                res = await s.call_tool("ps_compile", {
+                    "session_id": sid, "app_name": "a2_upload",
+                    "elf_path": "D:/x.elf"})
+                data = json.loads(res.content[0].text)
+                assert data["status"] == "error"
+                assert data["error"]["code"] == "INVALID_ARGUMENT"
+                assert data["error"]["details"]["reason_code"] == \
+                    "UNSUPPORTED_ARGUMENT"
+
+    async def test_ps_get_bsp_status_without_platform_name_accepted(
+            self, tmp_runtime_root, tmp_path):
+        """B12 D-B (extension, rejection guard): ps_get_bsp_status with ONLY
+        session_id (no domain args) must be accepted — the contract must not
+        over-reject a legitimate no-arg call."""
+        params = _server_params(tmp_runtime_root)
+        async with stdio_client(params) as (r, w):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                tools = await _list_tools(s)
+                _skip_unless_bsp_integrated(tools)
+                sid = await _create_session(s, tmp_path)
+                adm = await _ps_call(s, "ps_get_bsp_status", sid)
+                assert adm["status"] == "success", f"admission failed: {adm}"
+                assert adm["data"]["status"] == "accepted"
+
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Real XSCT (host_live — xsct on PATH + real B05 XSA)

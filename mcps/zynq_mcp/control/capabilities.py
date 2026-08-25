@@ -182,6 +182,11 @@ DOMAIN_TOOLS: list[Tool] = [
                  "all", "synthesis", "implementation", "simulation",
                  "instantiation_template"], "default": "synthesis"}},
              "additionalProperties": False}),
+    Tool(name="pl_reset_run", description="Reset a synthesis/implementation run so a FAILED stage can be retried cleanly (bridges reset_run; run_name must be synth_1 or impl_1; force optional; does not advance the workflow stage)",
+         inputSchema={"type": "object", "properties": {
+             "run_name": {"type": "string", "enum": ["synth_1", "impl_1"]},
+             "force": {"type": "boolean"}},
+             "required": ["run_name"], "additionalProperties": False}),
     Tool(name="pl_open_checkpoint", description="Open a Vivado Design Checkpoint (.dcp) (bridges open_checkpoint)",
          inputSchema={"type": "object", "properties": {"dcp_path": {"type": "string"}}, "required": ["dcp_path"]}),
     Tool(name="pl_close_design", description="Close the open design and clear session state (bridges close_design)",
@@ -403,6 +408,28 @@ def _inject_ps_session_schema(tool: Tool) -> Tool:
 
 DOMAIN_TOOLS = [_inject_ps_session_schema(tool) for tool in DOMAIN_TOOLS]
 ALL_TOOLS: list[Tool] = CONTROL_TOOLS + DOMAIN_TOOLS
+
+# B12 D-B (extension): the authoritative ps_* forwarded-argument contract.
+# Every ps_* domain function is invoked by the dispatcher as
+# ``local_fn(bridge, **arguments)``; a key the function does not accept raises a
+# TypeError, which the CommandRunner turns into OUTCOME_UNKNOWN → P6 gate (the
+# exact D-B symptom). Derive the allowed forwarded-argument set per tool from
+# the registered MCP schema ``properties`` (the authoritative public contract;
+# the injected ``session_id`` transport key is excluded because the dispatcher
+# strips it). The dispatcher rejects an unsupported key deterministically
+# (INVALID_ARGUMENT / UNSUPPORTED_ARGUMENT) BEFORE admission, so it can never
+# reach a domain signature and never become OUTCOME_UNKNOWN / a P6 block.
+_PS_ALLOWED_ARGS: dict[str, frozenset] = {}
+for _tool in DOMAIN_TOOLS:
+    if _tool.name.startswith("ps_"):
+        _props = (_tool.inputSchema or {}).get("properties", {})
+        # project_path is a genuine XSCT-workspace arg for the 4 setup tools
+        # (import_hardware/create_platform/create_bsp/create_app); for every
+        # other ps_* tool it is session transport. The schema declares it only
+        # where it is a real arg, so it is correctly included/excluded.
+        _PS_ALLOWED_ARGS[str(_tool.name)] = frozenset(
+            k for k in _props.keys() if k != "session_id")
+del _tool, _props
 
 # Mechanical derivation (B11 phase 2): the implemented-domain count is
 # len(DOMAIN_TOOLS). A hand-maintained constant drifted from the registered

@@ -80,8 +80,9 @@ class TestToolDiscovery:
                 # platform_* = 17 atoms (14 B05-R2 + B11 ③.1
                 # assign_addresses/make_external/synthesize; the
                 # platform_generate shortcut was removed in B11 phase 2);
-                # pl_* = pl_generate_system_top + 26 PL bridge tools = 27.
-                assert len(pl_tools) == 44
+                # pl_* = pl_generate_system_top + 27 PL bridge tools = 28
+                # (B12 fix round #2 added pl_reset_run).
+                assert len(pl_tools) == 45
                 assert "platform_generate" not in pl_tools
                 assert "pl_generate_system_top" in pl_tools
                 assert "platform_create_design" in pl_tools

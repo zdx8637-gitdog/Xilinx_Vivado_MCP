@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 
 from mcps.common.tool_response import success
+from mcps.common.revision import sha256_file as _sha256_file
 from mcps.zynq_mcp.control.execution_ledger import (
     ExecutionLedger, ledger_transaction, ledger_read_shared,
     EXECUTION_LANE_IDLE, OP_SUCCEEDED, OP_FAILED,
@@ -331,7 +332,7 @@ class TestAddIp:
     async def test_fresh_add_silent_drop_raises_not_success(self):
         """D-A: if a requested property does NOT stick on a fresh add (the
         readback returns a stale/empty value), the atom must raise a real
-        mismatch (non-empty actual), never return success."""
+        error, never return success."""
         adapter = _FakeAdapter([
             {"output": "0"},  # exists check
             {"output": ""},   # create + set_property
@@ -341,8 +342,45 @@ class TestAddIp:
             await platform_add_ip(adapter,
                 vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_0",
                 properties={"C_GPIO2_WIDTH": 10})
-        assert ei.value.reason_code == "IP_CONFIG_MISMATCH"
+        assert ei.value.reason_code == "IP_PROPERTY_NOT_RECOGNIZED"
         assert "C_GPIO2_WIDTH" in str(ei.value)
+
+    @pytest.mark.asyncio
+    async def test_fresh_add_unknown_property_raises_not_recognized(self):
+        """B12 fix round #2 (item #5): a property name Vivado silently ignores
+        (wrong name, e.g. `C_DATA_WIDTH` on axi_bram_ctrl whose real parameter
+        is `C_S_AXI_DATA_WIDTH`) must raise a distinct IP_PROPERTY_NOT_RECOGNIZED
+        — telling the caller the NAME is wrong, not a value mismatch."""
+        adapter = _FakeAdapter([
+            {"output": "0"},  # exists check
+            {"output": ""},   # create + set_property
+            {"output": ""},   # readback C_DATA_WIDTH -> '' (not a real param)
+        ])
+        with pytest.raises(PlatformError) as ei:
+            await platform_add_ip(adapter,
+                vlnv="xilinx.com:ip:axi_bram_ctrl:4.1",
+                instance_name="axi_bram_ctrl_0",
+                properties={"C_DATA_WIDTH": 32})
+        assert ei.value.reason_code == "IP_PROPERTY_NOT_RECOGNIZED"
+        assert "C_DATA_WIDTH" in str(ei.value)
+
+    @pytest.mark.asyncio
+    async def test_fresh_add_recognized_value_mismatch_raises_ip_config(self):
+        """A property the IP DOES recognize but whose value was not applied
+        (readback returns a different value) raises IP_CONFIG_MISMATCH — the
+        generic mismatch, distinct from an unknown property name."""
+        adapter = _FakeAdapter([
+            {"output": "0"},  # exists check
+            {"output": ""},   # create + set_property
+            {"output": "64"}, # readback C_S_AXI_DATA_WIDTH -> different value
+        ])
+        with pytest.raises(PlatformError) as ei:
+            await platform_add_ip(adapter,
+                vlnv="xilinx.com:ip:axi_bram_ctrl:4.1",
+                instance_name="axi_bram_ctrl_0",
+                properties={"C_S_AXI_DATA_WIDTH": 32})
+        assert ei.value.reason_code == "IP_CONFIG_MISMATCH"
+        assert "C_S_AXI_DATA_WIDTH" in str(ei.value)
 
 
 class TestListIps:
@@ -891,6 +929,41 @@ class TestExportManifest:
         assert again["data"]["publish"] == "already_exists_same"
         assert again["data"]["manifest_path"] == first["data"]["manifest_path"]
         assert again["data"]["manifest_sha256"] == first["data"]["manifest_sha256"]
+
+    @pytest.mark.asyncio
+    async def test_re_export_versions_on_changed_xsa(self, tmp_path):
+        """B12 fix round #2 (item #4C): a re-export with an unchanged BD/board
+        profile/preset but a CHANGED XSA must produce a NEW revision and be
+        published to its OWN sha256_<rev>.json path — "correct versioning",
+        not a ManifestConflictError (the same revision path would collide)."""
+        proj = self._make_project(tmp_path)
+        first = await platform_export_manifest(
+            _FakeAdapter(list(self._OUTPUTS)), project_path=str(proj),
+            board_id=BOARD, board_profile_sha256=_SHA)
+        assert first["data"]["publish"] == "published"
+        rev1 = first["data"]["platform_revision"]
+
+        # Change the XSA bytes (same wrapper / board / preset). The revision
+        # now must advance because xsa_sha256 is a revision input.
+        (proj / "platform.xsa").write_bytes(b"\x78\x73\x61CHANGED")
+        second = await platform_export_manifest(
+            _FakeAdapter(list(self._OUTPUTS)), project_path=str(proj),
+            board_id=BOARD, board_profile_sha256=_SHA)
+        assert second["data"]["publish"] == "published"
+        rev2 = second["data"]["platform_revision"]
+        assert rev2 != rev1, "changed XSA must advance the platform revision"
+
+        # The new manifest lands at its own revision path, not the old one.
+        path2 = proj / "manifests" / "platform" / f"sha256_{rev2[7:]}.json"
+        assert os.path.isfile(path2)
+        assert path2 != first["data"]["manifest_path"]
+        with open(path2, encoding="utf-8") as f:
+            manifest2 = json.load(f)
+        assert manifest2["manifest_revision"] == rev2
+        assert manifest2["manifest_type"] == "platform"
+        # the persisted manifest records the NEW xsa_sha256 (versioned).
+        assert manifest2["xsa_sha256"] == \
+            _sha256_file(str(proj / "platform.xsa"))
 
     @pytest.mark.asyncio
     async def test_fails_closed_when_bd_not_ready(self, tmp_path):

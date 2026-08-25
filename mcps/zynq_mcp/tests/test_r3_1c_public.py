@@ -249,7 +249,8 @@ class TestPublicMCP:
                         # B11 ③.1: assign_addresses/make_external/synthesize
                         # added → 103 total (9 control + 94 domain).
                         # B12-N3: ps_start_hw_server → 104 total (9 control + 95 domain).
-                        assert len(names) == 104
+                        # B12 fix round #2: pl_reset_run → 105 total (9 control + 96 domain).
+                        assert len(names) == 105
                         pl_in = [n for n in names if n.startswith("pl_")]
                         # B07 registered 26 PL bridge tools on top of
                         # pl_generate_system_top. Every registered pl_* tool

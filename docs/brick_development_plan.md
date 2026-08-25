@@ -389,6 +389,8 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 
 > **B12-N3 整改（2026-08-24）**：公开 MCP 新增 `ps_start_hw_server`（hw_server 本地自启、detached、幂等、有界就绪等待；只启不停，环境重启后 hw_server 消失时可自足恢复），工具数 103→104；Skill `phases/7` 7a 预检表加一行自启诊断；含 host_live 真实启动测试。报告 [B12_n3_hwserver_tool_report.md](development/mcp/B12_n3_hwserver_tool_report.md)。
 
+> **修复轮#2（2026-08-25，报告 [B12_a2_flow_fix2_report.md](development/mcp/B12_a2_flow_fix2_report.md)）**：新增 `pl_reset_run`（工具数 104→105）；`platform_export_manifest` 把 xsa_sha 纳入 revision（重导出正确版本化）；ps_* 参数契约泛化（schema 派生 allowed-args，未知参数稳定 INVALID_ARGUMENT，绝不 TypeError/OUTCOME_UNKNOWN）；`ps_compile` 失败路径回传完整构建/链接输出（D-C 精神）；D-E 修复的 generation 同步缺陷修正（活 worker 保留不 bump，消除 BACKEND_IDENTITY_MISMATCH）；add_ip 未知属性名可归因 `IP_PROPERTY_NOT_RECOGNIZED`。**关键诚实发现**：白盒 v2 的"BSP 库不完整"实为固件调用旧版 API `XUartPs_Initialize`（Vitis2023.1 应为 `XUartPs_CfgInitialize`），库本身完整。回归 1460 collected / 1418 passed / 0 failed。
+
 ## 6. 当前工作
 
 - B00–B03：✅ COMPLETE / FROZEN。

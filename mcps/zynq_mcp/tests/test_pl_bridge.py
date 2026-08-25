@@ -49,7 +49,7 @@ from mcps.zynq_mcp.control.domain_runner import (
 from mcps.zynq_mcp.domains.pl.pl_bridge_tools import (
     PL_TOOL_MAP, _bridge_call, _call_old, _call_old_adapter,
     pl_create_project, pl_open_checkpoint, pl_close_design,
-    pl_generate_target, pl_synthesize, pl_place, pl_route,
+    pl_generate_target, pl_reset_run, pl_synthesize, pl_place, pl_route,
     pl_generate_bitstream,
     pl_analyze_timing, pl_analyze_utilization,
     pl_query_cells, pl_query_nets, pl_query_clocks, pl_query_ports,
@@ -293,6 +293,7 @@ _TCL_EXPECT = {
     "pl_create_project": ("create_project", 180.0),
     "pl_open_checkpoint": ("open_checkpoint", 360.0),
     "pl_close_design": ("close_design", 90.0),
+    "pl_reset_run": ("reset_run", 90.0),
     "pl_generate_bitstream": ("write_bitstream", 360.0),
     "pl_analyze_timing": ("report_timing_summary", 120.0),
     "pl_analyze_utilization": ("report_utilization", 120.0),
@@ -316,6 +317,7 @@ _REPR_ARGS = {
     "pl_open_checkpoint": {"dcp_path": "<REALFILE>"},  # replaced per-test
     "pl_close_design": {},
     "pl_generate_target": {"target_type": "synthesis"},
+    "pl_reset_run": {"run_name": "synth_1", "force": True},
     "pl_synthesize": {"top": "system_top", "flatten": "rebuilt"},
     "pl_place": {"directive": "Explore"},
     "pl_route": {"directive": "Explore"},
@@ -428,6 +430,60 @@ class TestToolBehaviors:
         assert "add_files -fileset sources_1 {a.v}" in tcl
         assert "add_files -fileset constrs_1 {c.xdc}" in tcl
         assert "{{" not in tcl
+
+    @pytest.mark.asyncio
+    async def test_reset_run_success(self):
+        """B12 fix #2 (item #4A): pl_reset_run resets a failed run so the stage
+        can be retried cleanly. On a present run, it must issue reset_run and
+        report the reset succeeded with the run's rewritten status."""
+        bridge = _FakeVivadoBridge(response={
+            "status": "success", "data": "RESET_STATUS=reset"})
+        out = await pl_reset_run(bridge, run_name="synth_1")
+        assert out["status"] == "success"
+        assert out["data"]["run_name"] == "synth_1"
+        assert out["data"]["reset"] is True
+        assert "reset_run synth_1" in bridge.calls[-1][0]
+        # the run existence check is fail-closed (guards get_runs first).
+        assert "get_runs -quiet synth_1" in bridge.calls[-1][0]
+
+    @pytest.mark.asyncio
+    async def test_reset_run_force_flag(self):
+        bridge = _FakeVivadoBridge(response={
+            "status": "success", "data": "RESET_STATUS=reset"})
+        await pl_reset_run(bridge, run_name="impl_1", force=True)
+        assert "reset_run -force impl_1" in bridge.calls[-1][0]
+
+    @pytest.mark.asyncio
+    async def test_reset_run_rejects_unknown_run(self):
+        bridge = _FakeVivadoBridge()
+        out = await pl_reset_run(bridge, run_name="synth_2")
+        assert out["status"] == "error"
+        assert out["error"]["code"] == "INVALID_ARGUMENT"
+        assert out["error"]["details"]["reason_code"] == "INVALID_ARGUMENT"
+        assert bridge.calls == [], "no eval may happen for an invalid run_name"
+
+    @pytest.mark.asyncio
+    async def test_reset_run_fail_closed_on_bridge_error(self):
+        """A bridge eval failure (or a non-Complete reset) must be reported,
+        never a silent success."""
+        bridge = _FakeVivadoBridge(response={
+            "status": "error", "error": {
+                "code": "XSDM_EVAL_ERROR", "message": "boom",
+                "details": {"reason_code": "XSDM_TCL_ERROR"}}})
+        out = await pl_reset_run(bridge, run_name="synth_1")
+        assert out["status"] == "error"
+        assert out["error"]["code"] in ("ENV_ERROR", "TOOL_ERROR")
+        assert out["error"]["details"]["reason_code"] in (
+            "VIVADO_TCL_ERROR", "RESET_RUN_FAILED")
+
+    @pytest.mark.asyncio
+    async def test_reset_run_missing_run_reports_error(self):
+        """A reset_run on a run that does not exist must fail closed."""
+        bridge = _FakeVivadoBridge(response={
+            "status": "success", "data": "ERROR: run synth_1 does not exist"})
+        out = await pl_reset_run(bridge, run_name="synth_1")
+        assert out["status"] == "error"
+        assert out["error"]["details"]["reason_code"] == "RESET_RUN_FAILED"
 
     @pytest.mark.asyncio
     async def test_create_project_rejects_missing_project_dir(self):
@@ -938,7 +994,7 @@ class TestRegistrationConsistency:
     def test_pl_bridge_tools_match_capabilities(self):
         from mcps.zynq_mcp.control.capabilities import ALL_TOOLS
         pl_registered = {t.name for t in ALL_TOOLS if t.name.startswith("pl_")}
-        assert len(PL_TOOL_MAP) == 26
+        assert len(PL_TOOL_MAP) == 27  # + pl_reset_run (B12 fix round #2)
         # every pl_* tool except pl_generate_system_top must have a bridge fn
         assert set(pl_registered) - {"pl_generate_system_top"} == set(PL_TOOL_MAP.keys())
 
@@ -953,8 +1009,9 @@ class TestRegistrationConsistency:
         # B11 phase 2: platform_generate removed → 100 total (9 control + 91
         # domain); was 101 with the shortcut. B11 ③.1: + assign_addresses /
         # make_external / synthesize → 103 (9 control + 94 domain). B12-N3:
-        # + ps_start_hw_server → 104 (9 control + 95 domain).
-        assert len(ALL_TOOLS) == 104
+        # + ps_start_hw_server → 104 (9 control + 95 domain). B12 fix round #2:
+        # + pl_reset_run → 105 (9 control + 96 domain).
+        assert len(ALL_TOOLS) == 105
 
 
 # ── _execute bridge injection (production CommandRunner path) ─────────────

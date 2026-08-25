@@ -281,6 +281,15 @@ async def _verify_ip_props(adapter, instance_name: str,
     correctly-applied IP as a mismatch — and, worse, never prove a real
     mismatch on a silent drop. Returns ``{}`` when every requested property
     matched.
+
+    B12 fix round #2 (item #5): Vivado **silently ignores** a non-existent
+    ``CONFIG.<key>`` on a ``set_property`` (e.g. a wrong parameter name like
+    ``C_DATA_WIDTH`` on ``axi_bram_ctrl``, whose real parameter is
+    ``C_S_AXI_DATA_WIDTH``), so the write "succeeds" but the property never
+    lands. The readback then returns ``''`` for that key. Mark such entries
+    with ``recognized: False`` so the caller can distinguish an unknown
+    property name (a name/spec error) from a value that was applied to a real
+    parameter but with a different value.
     """
     mismatch = {}
     for key, want in props.items():
@@ -289,7 +298,9 @@ async def _verify_ip_props(adapter, instance_name: str,
             f"get_prop_{key}")
         got = _tcl_output(rdata).strip()
         if _norm_prop_val(got) != _norm_prop_val(want):
-            mismatch[key] = {"expected": want, "actual": got}
+            recognized = bool(got)
+            mismatch[key] = {"expected": want, "actual": got,
+                             "recognized": recognized}
     return mismatch
 
 
@@ -335,9 +346,22 @@ async def platform_add_ip(adapter, *, vlnv: str, instance_name: str,
         cmd += f"\nset_property -dict [list {' '.join(parts)}] [get_bd_cells {instance_name}]"
     await _run_tcl(adapter, cmd, "add_ip")
     # D-A: verify the requested config really stuck before returning success.
+    # B12 fix round #2 (item #5): if a requested CONFIG.* reads back as '' on a
+    # fresh add, Vivado silently ignored it — the property name is not a real
+    # parameter of this IP (e.g. C_DATA_WIDTH on axi_bram_ctrl, whose real name
+    # is C_S_AXI_DATA_WIDTH). Raise a distinct IP_PROPERTY_NOT_RECOGNIZED so
+    # the caller knows the name is wrong, instead of a generic mismatch.
     if props:
         mismatch = await _verify_ip_props(adapter, instance_name, props)
         if mismatch:
+            unknown = {k: v for k, v in mismatch.items()
+                       if v.get("recognized") is False}
+            if unknown:
+                raise PlatformError(
+                    f"IP {instance_name} property(ies) not recognized by the "
+                    f"catalog (Vivado silently ignored them): "
+                    f"{ {k: v for k, v in unknown.items()} }",
+                    "IP_PROPERTY_NOT_RECOGNIZED")
             raise PlatformError(
                 f"IP {instance_name} config not applied: {mismatch}",
                 "IP_CONFIG_MISMATCH")
@@ -973,13 +997,21 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
         vivado_version = "2023.1"
 
     # 8. Compute revision + build the manifest (mirror the platform manifest
-    #    shape published by the B05 flow).
+    #    shape published by the B05 flow). The XSA sha is a revision input:
+    #    a re-export produces the SAME revision only when BOTH the wrapper and
+    #    the XSA are unchanged. If only the XSA changed (same wrapper / board
+    #    profile / preset), the revision advances and the new manifest is
+    #    published to its own sha256_<rev>.json path — "correct versioning"
+    #    (B12 fix round #2 item #4C). A platform revision that ignored
+    #    xsa_sha would collide and raise ManifestConflictError instead of
+    #    versioning the re-export.
     wrapper_rel = f"hdl/{wrapper_name}"
     revision_inputs = {
         "board_profile_sha256": board_profile_sha256,
         "tool_versions": {"vivado": vivado_version},
         "source_files": [{"path": wrapper_rel, "sha256": wrapper_sha}],
         "config_files": [{"path": preset_rel, "sha256": preset_sha}],
+        "xsa_sha256": xsa_sha,
     }
     platform_revision = compute_revision(revision_inputs)
 

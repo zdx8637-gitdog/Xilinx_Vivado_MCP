@@ -40,7 +40,7 @@ from mcps.zynq_mcp.control.resource_registry import resource_public_view
 from mcps.zynq_mcp.control.session import (
     create_session_mutator, close_session_mutator, handle_get_session_info,
 )
-from mcps.zynq_mcp.control.capabilities import build_capabilities, ALL_TOOLS
+from mcps.zynq_mcp.control.capabilities import build_capabilities, ALL_TOOLS, _PS_ALLOWED_ARGS
 from mcps.zynq_mcp.domains.ps import (
     jtag_target, target_control, memory_access, target_recovery, ps_bsp,
     debug_session, uart_capture, uart_diagnostics, hw_server_start,
@@ -1011,15 +1011,30 @@ async def _dispatch_ps(args, tool_name, disp):
     ps_args = dict(args)
     ps_args.pop("session_id", None)
     ps_args.pop("board_id", None)
-    if tool_name in _PS_PROJECT_PATH_TOOLS:
-        pass  # project_path is a genuine domain argument (schema declares it)
-    else:
-        if "project_path" in ps_args:
+    # B12 D-B (extension): enforce the per-tool forwarded-argument contract so
+    # an unsupported key (e.g. platform_name on ps_get_bsp_status) is rejected
+    # deterministically BEFORE admission — never a TypeError → OUTCOME_UNKNOWN
+    # → P6 gate. This generalises the project_path guard to every ps_* tool.
+    allowed = _PS_ALLOWED_ARGS.get(tool_name)
+    if allowed is not None:
+        unsupported = [k for k in ps_args if k not in allowed]
+        if unsupported:
             return error(
-                f"project_path is not a supported argument for {tool_name}",
+                f"unsupported argument(s) for {tool_name}: "
+                f"{', '.join(sorted(unsupported))}; supported: "
+                f"{', '.join(sorted(allowed)) or '(none)'}",
                 code="INVALID_ARGUMENT",
-                details={"reason_code": "UNSUPPORTED_ARGUMENT"}).to_dict()
-        ps_args.pop("project_path", None)
+                details={"reason_code": "UNSUPPORTED_ARGUMENT",
+                         "unsupported": sorted(unsupported),
+                         "supported": sorted(allowed)}).to_dict()
+    else:
+        # Fallback (unregistered/missed tool): keep the narrow project_path
+        # guard only for the 4 genuine workspace tools; drop it otherwise so it
+        # never reaches a domain signature as a TypeError.
+        if tool_name in _PS_PROJECT_PATH_TOOLS:
+            pass  # project_path is a genuine domain argument
+        else:
+            ps_args.pop("project_path", None)
 
     if tool_name == "ps_connect_hw_server":
         resource_req = ResourceRequirement(

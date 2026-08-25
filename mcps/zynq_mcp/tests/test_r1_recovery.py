@@ -228,6 +228,12 @@ class TestRecovery:
             assert l.previous_operation["status"] == OP_OUTCOME_UNKNOWN
             assert l.previous_operation["resolved_by_recovery"] is True
             assert l.worker["pid"] == proc.pid  # fail-closed: worker untouched
+            # D1-residual fix: when the live worker is KEPT, its generation MUST
+            # stay the controller's own in-memory generation. Bumping it would
+            # desync the next ensure_backend re-entry (which compares
+            # worker_generation == self._generation) and fail with
+            # BACKEND_IDENTITY_MISMATCH — the exact whitebox v2 residual.
+            assert l.worker["worker_generation"] == 1
 
             # the next command is ADMITTED (P6 no longer blocks).
             from mcps.zynq_mcp.control.execution_gate import preflight_mutator
@@ -238,5 +244,9 @@ class TestRecovery:
             l2 = ledger_transaction(g, lp, mut)
             assert l2.active_operation is not None
             assert l2.active_operation["status"] == OP_ACCEPTED
+            # A kept-live worker with unchanged generation also re-verifies
+            # cleanly through the process-controller identity gate (the D1
+            # residual regression).
+            assert l2.worker["worker_generation"] == 1
         finally:
             proc.kill(); proc.wait(timeout=5)

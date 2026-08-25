@@ -441,6 +441,73 @@ class TestCompileApp:
         # the marker reports kept/total.
         assert f"{ps_bsp._MAX_BUILD_OUTPUT_LEN}/{total}" in msg
 
+    async def test_compile_app_app_build_failure_includes_full_output(
+            self, tmp_path):
+        """D-C (item #1): `app build failed` must carry the FULL build/link
+        output, not one terse line. An undefined-reference link error is the
+        actionable cause and must reach the caller."""
+        full_output = (
+            "Building file: ../src/main.c\n"
+            "arm-none-eabi-gcc: error: main.c:5: undefined reference to "
+            "`XUartPs_Initialize'\n"
+            "collect2: error: ld returned 1 exit status\n")
+        app_err = {"status": "error", "error": {
+            "code": "XSDM_EVAL_ERROR", "message": full_output,
+            "details": {"reason_code": "XSDM_TCL_ERROR"}}}
+        bridge = FakeXsctBridge(results=[app_err], workspace=str(tmp_path))
+        r = await ps_bsp.compile_app(bridge, "myapp")
+        assert r["status"] == "error"
+        assert r["error"]["details"]["reason_code"] == "BUILD_FAILED"
+        msg = r["error"]["message"]
+        assert "app build failed" in msg
+        assert "undefined reference to `XUartPs_Initialize'" in msg
+        assert "ld returned 1 exit status" in msg
+        assert r["error"]["details"]["build_output_truncated"] is False
+
+    async def test_compile_app_no_elf_surfaces_build_output(
+            self, tmp_path, monkeypatch):
+        """D-C (item #1): when the build "succeeds" (no Tcl error) but produces
+        no ELF, the real link error still in the captured stdout must be
+        returned so the caller can locate it — not a bare one-line conclusion.
+        This is the exact BSP-lib-incomplete scenario (an undefined reference
+        to a driver symbol that link never resolves)."""
+        make_exe = "D:/Xilinx/Vivado/2023.1/gnuwin/bin/make.exe"
+        monkeypatch.setattr(ps_bsp, "_find_make", lambda: make_exe)
+        # app build returns success (no ELF), make fallback returns success with
+        # the link error on stdout but STILL produces no ELF.
+        no_elf_build = {"status": "success", "data": ""}
+        make_output = ("cd .../Debug\n"
+                       "arm-none-eabi-gcc: error: ../src/main.c:160: undefined "
+                       "reference to `XUartPs_Initialize'\n"
+                       "collect2: error: ld returned 1 exit status\n")
+        make_ok = {"status": "success", "data": make_output}
+        bridge = FakeXsctBridge(results=[no_elf_build, make_ok],
+                                workspace=str(tmp_path))
+        r = await ps_bsp.compile_app(bridge, "myapp")
+        assert r["status"] == "error"
+        assert r["error"]["details"]["reason_code"] == "BUILD_FAILED"
+        assert "no ELF produced after build" in r["error"]["message"]
+        # the captured link detail must surface.
+        assert "undefined reference to `XUartPs_Initialize'" in \
+            r["error"]["message"]
+        assert "collect2: error: ld returned 1 exit status" in \
+            r["error"]["message"]
+        assert r["error"]["details"]["build_output_len"] == len(make_output)
+
+    async def test_compile_app_no_elf_no_output_keeps_bare_message(
+            self, tmp_path, monkeypatch):
+        """When the build produced no ELF AND left no usable stdout (no detail
+        to surface), the message stays a clean base line — no crash, no
+        fabricated detail."""
+        make_exe = "D:/Xilinx/Vivado/2023.1/gnuwin/bin/make.exe"
+        monkeypatch.setattr(ps_bsp, "_find_make", lambda: make_exe)
+        bridge = FakeXsctBridge(results=[_OK, _OK], workspace=str(tmp_path))
+        r = await ps_bsp.compile_app(bridge, "myapp")
+        assert r["status"] == "error"
+        assert r["error"]["details"]["reason_code"] == "BUILD_FAILED"
+        assert r["error"]["message"] == \
+            "no ELF produced after build for app 'myapp'"
+
     async def test_find_make_resolves_from_vivado_root(self, monkeypatch):
         """make.exe resolution honors $VIVADO_ROOT over the default root."""
         monkeypatch.delenv("VIVADO_EXEC", raising=False)

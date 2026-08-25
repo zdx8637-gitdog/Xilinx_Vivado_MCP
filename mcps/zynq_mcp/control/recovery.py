@@ -154,7 +154,13 @@ def recovery_mutator(op_id):
         # forcing a whole-runtime rotation.
         if worker_alive and unresolved_prev and not in_flight:
             now = _now_iso()
-            gen = w.get("worker_generation", 0) + 1
+            # Keep the live worker's EXACT generation. This is the same physical
+            # backend the process controller still owns with its in-memory
+            # ``self._generation``; bumping the ledger generation would desync
+            # the two and the next ensure_backend re-entry would fail
+            # _verify_current_identity with BACKEND_IDENTITY_MISMATCH (D1
+            # residual). Only a cleared/dead worker may advance generation.
+            gen = w.get("worker_generation", 0)
             _resolve_previous_op(po, w, op_id, now)
             ledger.execution_lane = EXECUTION_LANE_IDLE
             w["worker_generation"] = gen

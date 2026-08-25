@@ -730,8 +730,16 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
                              timeout_s=_BUILD_TIMEOUT_S, tolerate_stderr=True)
     verr = extract_bridge_error(result)
     if verr:
-        return ps_error("BUILD_FAILED", f"app build failed: {verr[2]}",
-                        details={"app_name": app_name})
+        # D-C: `app build failed` must carry the FULL build/compiler output,
+        # not only a single terse line (undefined-reference / link details are
+        # the actionable cause). Cap only when very long, with a truncation
+        # marker + total length.
+        raw = verr[2]
+        capped = _cap_build_output(raw)
+        return ps_error("BUILD_FAILED", f"app build failed: {capped}",
+                        details={"app_name": app_name,
+                                 "build_output_len": len(raw),
+                                 "build_output_truncated": len(raw) > _MAX_BUILD_OUTPUT_LEN})
 
     # Step 2 — app build emitted the ELF → done, no make needed.
     if hasattr(bridge, "observe_step"):
@@ -785,9 +793,23 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
         await bridge.observe_step("ELF_VERIFY")
     elf = _find_elf(app_dir)
     if elf is None:
+        # D-C: when the build "succeeds" (no Tcl error) but produces no ELF,
+        # the underlying cause (e.g. an undefined reference reported on the
+        # link line) is still in the captured build output. Surface it instead
+        # of a bare one-line conclusion, so the caller can locate the real
+        # link/build error.
+        detail = ""
+        if isinstance(result, dict) and result.get("status") == "success":
+            detail = result.get("data")
+        if not isinstance(detail, str) or not detail.strip():
+            detail = ""
+        capped = _cap_build_output(detail) if detail else detail
         return ps_error("BUILD_FAILED",
-                        f"no ELF produced after build for app {name!r}",
-                        details={"app_name": app_name})
+                        f"no ELF produced after build for app {name!r}"
+                        + (f": {capped}" if capped else ""),
+                        details={"app_name": app_name,
+                                 "build_output_len": len(detail),
+                                 "build_output_truncated": len(detail) > _MAX_BUILD_OUTPUT_LEN})
 
     if hasattr(bridge, "observe_step"):
         from mcps.zynq_mcp.control.execution_ledger import OBS_COMPLETE
