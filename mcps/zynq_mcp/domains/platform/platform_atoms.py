@@ -270,6 +270,29 @@ def _norm_prop_val(v) -> str:
     return s
 
 
+async def _verify_ip_props(adapter, instance_name: str,
+                           props: dict) -> dict:
+    """Read back each requested CONFIG.* and return the mismatch map.
+
+    Every query is printed with ``puts`` — the Tcl bridge captures stdout
+    only, never a bare command return value (D8). This is the D-A fix: a bare
+    ``get_property`` (no ``puts``) comes back empty on real Vivado, so the
+    readback would report ``actual=''`` for every property and misclassify a
+    correctly-applied IP as a mismatch — and, worse, never prove a real
+    mismatch on a silent drop. Returns ``{}`` when every requested property
+    matched.
+    """
+    mismatch = {}
+    for key, want in props.items():
+        rdata = await _run_tcl(adapter,
+            f"puts [get_property CONFIG.{key} [get_bd_cells {instance_name}]]",
+            f"get_prop_{key}")
+        got = _tcl_output(rdata).strip()
+        if _norm_prop_val(got) != _norm_prop_val(want):
+            mismatch[key] = {"expected": want, "actual": got}
+    return mismatch
+
+
 async def platform_add_ip(adapter, *, vlnv: str, instance_name: str,
                           properties: dict | None = None) -> dict:
     """Instantiate an IP from the catalog (atom API, idempotent).
@@ -277,6 +300,13 @@ async def platform_add_ip(adapter, *, vlnv: str, instance_name: str,
     If ``instance_name`` already exists, its config is compared against the
     requested ``properties``: matching → unchanged OK; differing → fail closed
     with IP_CONFIG_MISMATCH. No duplicate cell is ever created.
+
+    The config is ALWAYS verified after the write (D-A): the properties are
+    either really applied (readback matches → success) or an explicit
+    IP_CONFIG_MISMATCH is raised with the non-empty ``actual`` value — never a
+    silent success. This is what makes dual-channel AXI GPIO channel-2 params
+    (C_IS_DUAL / C_GPIO2_WIDTH / C_ALL_INPUTS_2) provable instead of silently
+    dropped.
     """
     if not isinstance(vlnv, str) or not vlnv.strip():
         raise PlatformError("vlnv must be a non-empty string", "INVALID_ARGUMENT")
@@ -290,14 +320,7 @@ async def platform_add_ip(adapter, *, vlnv: str, instance_name: str,
 
     if exists:
         if props:
-            mismatch = {}
-            for key, want in props.items():
-                rdata = await _run_tcl(adapter,
-                    f"get_property CONFIG.{key} [get_bd_cells {instance_name}]",
-                    f"get_prop_{key}")
-                got = _tcl_output(rdata).strip()
-                if _norm_prop_val(got) != _norm_prop_val(want):
-                    mismatch[key] = {"expected": want, "actual": got}
+            mismatch = await _verify_ip_props(adapter, instance_name, props)
             if mismatch:
                 raise PlatformError(
                     f"IP {instance_name} already exists with differing config: {mismatch}",
@@ -311,6 +334,13 @@ async def platform_add_ip(adapter, *, vlnv: str, instance_name: str,
         parts = [f"CONFIG.{key} {{{val}}}" for key, val in props.items()]
         cmd += f"\nset_property -dict [list {' '.join(parts)}] [get_bd_cells {instance_name}]"
     await _run_tcl(adapter, cmd, "add_ip")
+    # D-A: verify the requested config really stuck before returning success.
+    if props:
+        mismatch = await _verify_ip_props(adapter, instance_name, props)
+        if mismatch:
+            raise PlatformError(
+                f"IP {instance_name} config not applied: {mismatch}",
+                "IP_CONFIG_MISMATCH")
     return {"status": "success", "data": {
         "instance_name": instance_name, "vlnv": vlnv, "already_exists": False}}
 

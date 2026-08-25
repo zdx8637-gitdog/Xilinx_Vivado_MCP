@@ -48,7 +48,8 @@ from mcps.zynq_mcp.domains.ps import (
 # B06 second batch: BSP/Build tool names run on the XSCT shell (XsctBridge)
 # and keep project_path as a real argument. Single source in domain_runner.
 from mcps.zynq_mcp.control.domain_runner import (
-    _PS_XSCT_TOOL_NAMES, _PS_UART_CAPTURE_TOOLS, _PS_UART_DIRECT_TOOLS,
+    _PS_PROJECT_PATH_TOOLS, _PS_UART_CAPTURE_TOOLS,
+    _PS_UART_DIRECT_TOOLS,
     _JTAG_OBSERVATION_STEP, ResourceRequirement,
 )
 # B07: PL bridge tools (wrap old Vivado MCP tools via VivadoAdapter).
@@ -1000,12 +1001,24 @@ async def _dispatch_ps(args, tool_name, disp):
     pp = ctx.get("project_path", "")
 
     # Strip transport/control keys before forwarding to the domain function.
-    # BSP/Build tools KEEP project_path: for them it is a real argument (the
-    # XSCT workspace), not just session transport.
+    # BSP/Build tools KEEP project_path: for the 4 setup tools
+    # (import_hardware/create_platform/create_bsp/create_app) it is a real
+    # argument (the XSCT workspace). For every other ps_* tool project_path is
+    # session transport and must NOT be forwarded — forwarding it reaches a
+    # domain signature that does not accept it → TypeError → OUTCOME_UNKNOWN
+    # → P6 gate. B12 D-B: reject it deterministically with a stable
+    # INVALID_ARGUMENT / UNSUPPORTED_ARGUMENT instead.
     ps_args = dict(args)
     ps_args.pop("session_id", None)
     ps_args.pop("board_id", None)
-    if tool_name not in _PS_XSCT_TOOL_NAMES:
+    if tool_name in _PS_PROJECT_PATH_TOOLS:
+        pass  # project_path is a genuine domain argument (schema declares it)
+    else:
+        if "project_path" in ps_args:
+            return error(
+                f"project_path is not a supported argument for {tool_name}",
+                code="INVALID_ARGUMENT",
+                details={"reason_code": "UNSUPPORTED_ARGUMENT"}).to_dict()
         ps_args.pop("project_path", None)
 
     if tool_name == "ps_connect_hw_server":

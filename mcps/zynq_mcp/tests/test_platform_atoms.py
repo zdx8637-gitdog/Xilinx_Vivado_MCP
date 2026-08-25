@@ -252,7 +252,12 @@ class TestConfigurePs7:
 class TestAddIp:
     @pytest.mark.asyncio
     async def test_creates_cell_when_absent(self):
-        adapter = _FakeAdapter([{"output": "0"}, {"output": ""}])
+        # outputs: exists check(0) -> write("") -> readback C_GPIO_WIDTH(4)
+        #         -> readback C_ALL_OUTPUTS(1). The fresh-add path now verifies
+        # the requested config really applied (D-A), so the readbacks must
+        # echo the requested values.
+        adapter = _FakeAdapter([{"output": "0"}, {"output": ""},
+                                {"output": "4"}, {"output": "1"}])
         out = await platform_add_ip(adapter,
             vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_led",
             properties={"C_GPIO_WIDTH": 4, "C_ALL_OUTPUTS": 1})
@@ -260,9 +265,14 @@ class TestAddIp:
         assert out["data"]["already_exists"] is False
         # D8: the existence check prints its result (stdout-capture contract).
         assert adapter.calls[0][1]["command"] == "puts [llength [get_bd_cells -quiet axi_gpio_led]]"
-        tcl = _last_tcl(adapter)
-        assert "create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 axi_gpio_led" in tcl
-        assert "set_property -dict" in tcl and "C_GPIO_WIDTH {4}" in tcl
+        # the create+set_property write is the second Tcl command.
+        write_tcl = adapter.calls[1][1]["command"]
+        assert "create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 axi_gpio_led" in write_tcl
+        assert "set_property -dict" in write_tcl and "C_GPIO_WIDTH {4}" in write_tcl
+        # D-A: each readback is printed with `puts` (stdout-capture contract).
+        for c in adapter.calls:
+            if "get_property CONFIG." in c[1]["command"]:
+                assert c[1]["command"].startswith("puts [get_property CONFIG.")
 
     @pytest.mark.asyncio
     async def test_existing_same_config_is_unchanged(self):
@@ -284,6 +294,55 @@ class TestAddIp:
                 vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_led",
                 properties={"C_GPIO_WIDTH": 4})
         assert ei.value.reason_code == "IP_CONFIG_MISMATCH"
+
+    @pytest.mark.asyncio
+    async def test_dual_channel_config_actually_written(self):
+        """D-A: a dual-channel AXI GPIO add must write AND verify channel-2
+        params (C_IS_DUAL / C_GPIO2_WIDTH / C_ALL_INPUTS_2). The property is
+        either really applied (readback matches -> success) or an explicit
+        IP_CONFIG_MISMATCH is raised — never a silent success."""
+        adapter = _FakeAdapter([
+            {"output": "0"},  # exists check
+            {"output": ""},   # create + set_property
+            {"output": "1"},  # readback C_IS_DUAL
+            {"output": "10"}, # readback C_GPIO_WIDTH
+            {"output": "10"}, # readback C_GPIO2_WIDTH
+            {"output": "0"},  # readback C_ALL_INPUTS
+            {"output": "1"},  # readback C_ALL_INPUTS_2
+        ])
+        out = await platform_add_ip(adapter,
+            vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_0",
+            properties={"C_IS_DUAL": 1, "C_GPIO_WIDTH": 10,
+                        "C_GPIO2_WIDTH": 10, "C_ALL_INPUTS": 0,
+                        "C_ALL_INPUTS_2": 1})
+        assert out["status"] == "success"
+        assert out["data"]["already_exists"] is False
+        write_tcl = adapter.calls[1][1]["command"]
+        for prop, val in (("C_IS_DUAL", "1"), ("C_GPIO2_WIDTH", "10"),
+                          ("C_ALL_INPUTS_2", "1")):
+            assert f"CONFIG.{prop} {{{val}}}" in write_tcl
+        # every readback is printed with puts and carries the applied value.
+        readback_cmds = [c[1]["command"] for c in adapter.calls
+                         if "get_property CONFIG." in c[1]["command"]]
+        assert all(cmd.startswith("puts [get_property CONFIG.") for cmd in readback_cmds)
+        assert len(readback_cmds) == 5
+
+    @pytest.mark.asyncio
+    async def test_fresh_add_silent_drop_raises_not_success(self):
+        """D-A: if a requested property does NOT stick on a fresh add (the
+        readback returns a stale/empty value), the atom must raise a real
+        mismatch (non-empty actual), never return success."""
+        adapter = _FakeAdapter([
+            {"output": "0"},  # exists check
+            {"output": ""},   # create + set_property
+            {"output": ""},   # readback C_GPIO2_WIDTH -> empty (silent drop)
+        ])
+        with pytest.raises(PlatformError) as ei:
+            await platform_add_ip(adapter,
+                vlnv="xilinx.com:ip:axi_gpio:2.0", instance_name="axi_gpio_0",
+                properties={"C_GPIO2_WIDTH": 10})
+        assert ei.value.reason_code == "IP_CONFIG_MISMATCH"
+        assert "C_GPIO2_WIDTH" in str(ei.value)
 
 
 class TestListIps:

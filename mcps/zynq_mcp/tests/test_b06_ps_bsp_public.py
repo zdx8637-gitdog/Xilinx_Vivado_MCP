@@ -351,6 +351,54 @@ class TestBspErrorPaths:
                         "reason_code"), \
                         "error envelope must carry details.reason_code"
 
+    async def test_ps_add_sources_project_path_never_outcome_unknown(
+            self, tmp_runtime_root, tmp_path):
+        """B12 D-B: ps_add_sources must NOT accept `project_path` (it reads
+        bridge.workspace), so passing it must return a stable INVALID_ARGUMENT
+        envelope, never a TypeError -> OUTCOME_UNKNOWN -> P6 gate. This guards
+        against introducing `additionalProperties: False` (which would surface
+        an SDK "Input validation error" instead of the project envelope).
+        """
+        params = _server_params(tmp_runtime_root)
+        async with stdio_client(params) as (r, w):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                tools = await _list_tools(s)
+                _skip_unless_bsp_integrated(tools)
+                sid = await _create_session(s, tmp_path)
+                res = await s.call_tool("ps_add_sources", {
+                    "session_id": sid, "app_name": "myapp",
+                    "files": [str(tmp_path / "main.c")],
+                    "project_path": str(tmp_path)})
+                text = res.content[0].text if res.content else ""
+                assert not text.startswith("Input validation error"), \
+                    "D-B fix must return the project envelope, not SDK text"
+                data = json.loads(text)
+                # Exact envelope — NOT `x in ("success","error")`.
+                assert data["status"] == "error"
+                assert data["error"]["code"] == "INVALID_ARGUMENT"
+                assert data["error"]["details"]["reason_code"] == \
+                    "UNSUPPORTED_ARGUMENT"
+
+    async def test_ps_create_platform_project_path_accepted(
+            self, tmp_runtime_root, tmp_path):
+        """B12 D-B: ps_create_platform legitimately takes `project_path` as a
+        real XSCT-workspace argument — it must be accepted (admitted), not
+        rejected. Proves the intent-set distinction doesn't over-reject.
+        """
+        params = _server_params(tmp_runtime_root)
+        async with stdio_client(params) as (r, w):
+            async with ClientSession(r, w) as s:
+                await s.initialize()
+                tools = await _list_tools(s)
+                _skip_unless_bsp_integrated(tools)
+                sid = await _create_session(s, tmp_path)
+                adm = await _ps_call(
+                    s, "ps_create_platform", sid,
+                    {"name": "plat", "project_path": str(tmp_path)})
+                assert adm["status"] == "success", f"admission failed: {adm}"
+                assert adm["data"]["status"] == "accepted"
+
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Real XSCT (host_live — xsct on PATH + real B05 XSA)

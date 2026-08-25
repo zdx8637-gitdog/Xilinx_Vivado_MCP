@@ -387,6 +387,60 @@ class TestCompileApp:
         assert f"cd {{" in make_tcl
         assert "myapp/Debug" in make_tcl.replace("\\", "/")
 
+    async def test_compile_app_make_fallback_includes_full_output(
+            self, tmp_path, monkeypatch):
+        """D-C: a MAKE_FALLBACK build failure must return the FULL make/compiler
+        output (not a single line). Returns BUILD_FAILED with reason_code and
+        the truncation/total-length details."""
+        make_exe = "D:/Xilinx/Vivado/2023.1/gnuwin/bin/make.exe"
+        monkeypatch.setattr(ps_bsp, "_find_make", lambda: make_exe)
+        # A multi-line make failure (compiler errors + make recipe error).
+        full_output = (
+            "Building file: ../src/main.c\n"
+            "../src/main.c:5: error: 'zdx' undeclared (first use in this "
+            "function)\n"
+            "arm-none-eabi-gcc: fatal error: no input files\n"
+            "make.exe: *** [Debug/subdir.mk:6] Error 1\n")
+        make_err = {"status": "error", "error": {
+            "code": "XSDM_EVAL_ERROR", "message": full_output,
+            "details": {"reason_code": "XSDM_TCL_ERROR"}}}
+        bridge = FakeXsctBridge(results=[_OK, make_err], workspace=str(tmp_path))
+        r = await ps_bsp.compile_app(bridge, "myapp")
+        assert r["status"] == "error"
+        assert r["error"]["details"]["reason_code"] == "BUILD_FAILED"
+        msg = r["error"]["message"]
+        assert "make in Debug failed" in msg
+        assert "Building file: ../src/main.c" in msg
+        assert "main.c:5: error" in msg
+        assert "Error 1" in msg
+        assert "TRUNCATED" not in msg  # under cap, no truncation marker
+        assert r["error"]["details"]["build_output_truncated"] is False
+
+    async def test_compile_app_make_fallback_truncates_long_output(
+            self, tmp_path, monkeypatch):
+        """D-C: a very long complete compiler output is kept to a cap but the
+        truncation marker + total length are explicitly reported."""
+        make_exe = "D:/Xilinx/Vivado/2023.1/gnuwin/bin/make.exe"
+        monkeypatch.setattr(ps_bsp, "_find_make", lambda: make_exe)
+        long_lines = "\n".join(
+            f"gcc: line {i}: undeclared identifier 'zzz{i}'" for i in range(1, 3000))
+        full_output = f"Building file: ../src/main.c\n{long_lines}\nmake: *** Error 1\n"
+        make_err = {"status": "error", "error": {
+            "code": "XSDM_EVAL_ERROR", "message": full_output,
+            "details": {"reason_code": "XSDM_TCL_ERROR"}}}
+        bridge = FakeXsctBridge(results=[_OK, make_err], workspace=str(tmp_path))
+        r = await ps_bsp.compile_app(bridge, "myapp")
+        assert r["status"] == "error"
+        assert r["error"]["details"]["reason_code"] == "BUILD_FAILED"
+        msg = r["error"]["message"]
+        assert "Building file: ../src/main.c" in msg
+        assert "TRUNCATED:" in msg
+        assert r["error"]["details"]["build_output_truncated"] is True
+        total = r["error"]["details"]["build_output_len"]
+        assert total > ps_bsp._MAX_BUILD_OUTPUT_LEN
+        # the marker reports kept/total.
+        assert f"{ps_bsp._MAX_BUILD_OUTPUT_LEN}/{total}" in msg
+
     async def test_find_make_resolves_from_vivado_root(self, monkeypatch):
         """make.exe resolution honors $VIVADO_ROOT over the default root."""
         monkeypatch.delenv("VIVADO_EXEC", raising=False)
@@ -559,3 +613,22 @@ class TestTolerantStderrParse:
                                                   "__XSCT_END_0__")
         assert r["status"] == "error"
         assert "app build failed" in r["error"]["message"]
+
+    async def test_parse_tolerate_stderr_preserves_full_make_error(self):
+        """D-C: a failed ``exec make`` produces a MULTI-line Tcl error. The
+        parser must keep every line after the __XSCT_TCLERR__ marker, not just
+        the first — otherwise the compiler error detail (the actual cause) is
+        swallowed and the caller only sees ``'Building file: ../src/main.c'``."""
+        out = ("xsct% __XSCT_BEGIN_0__\r\n"
+               f"{_TCLERR_MARKER}Building file: ../src/main.c\r\n"
+               "xsct% ../src/main.c:5: error: 'zdx' undeclared (first use in "
+               "this function)\r\n"
+               "xsct% make.exe: *** [Debug/subdir.mk:6] Error 1\r\n"
+               "xsct% __XSCT_END_0__")
+        r = self._bridge()._parse_tolerate_stderr(out, "__XSCT_BEGIN_0__",
+                                                  "__XSCT_END_0__")
+        assert r["status"] == "error"
+        assert r["error"]["details"]["reason_code"] == "XSDM_TCL_ERROR"
+        assert "Building file: ../src/main.c" in r["error"]["message"]
+        assert "main.c:5: error" in r["error"]["message"]
+        assert "Error 1" in r["error"]["message"]

@@ -40,6 +40,19 @@ _PS_XSCT_TOOL_NAMES = frozenset({
     "ps_get_build_status",
 })
 
+# B12 D-B: only these XSCT workspace tools' domain functions genuinely take
+# ``project_path`` as a real argument (they call ``setws`` themselves). Every
+# other ps_* tool operates on the bridge's already-set workspace (bridge.
+# workspace == the session project_path), so ``project_path`` is session
+# transport, not a per-call argument. Passing it to a tool that must not
+# accept it was previously forwarded into the domain function signature → a
+# TypeError → OUTCOME_UNKNOWN → P6 gate. The dispatcher now rejects it
+# deterministically (stable INVALID_ARGUMENT / UNSUPPORTED_ARGUMENT) instead.
+_PS_PROJECT_PATH_TOOLS = frozenset({
+    "ps_import_hardware", "ps_create_platform", "ps_create_bsp",
+    "ps_create_app",
+})
+
 # PS helpers that are deliberately process-free.  They keep the uniform
 # ``local_fn(bridge, **arguments)`` calling convention, but ``bridge`` is
 # always None and no EDA backend may be started.  In particular,

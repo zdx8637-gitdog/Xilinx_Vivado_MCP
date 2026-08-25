@@ -149,10 +149,22 @@ class XsctBridge(_TclShellBridge):
         data_lines = lines[b_idx + 1:e_idx]
         data = "\n".join(data_lines).strip()
 
-        for s in data_lines:
+        # D-C: a failed ``exec make`` assigns the FULL multi-line child
+        # stdout+stderr+exit status to ``$__xsct_err``, which ``_catch_wrap``
+        # prints as ``__XSCT_TCLERR__<first line>`` followed by the remaining
+        # lines (only the first carries the marker — ``_parse_output`` then
+        # strips the per-line ``xsct% `` prompt, so continuation lines have no
+        # marker). The old code returned on the FIRST marker line and dropped
+        # the rest, collapsing a compiler error to a single line. Keep every
+        # line from the marker to the end marker: ``_catch_wrap`` prints nothing
+        # else on failure, so all of them belong to that one error message.
+        for i, s in enumerate(data_lines):
             if s.startswith(_TCLERR_MARKER):
+                parts = [s[len(_TCLERR_MARKER):].strip()]
+                parts.extend(l for l in data_lines[i + 1:])
                 return self._error_dict(
-                    XSDM_EVAL_ERROR, s[len(_TCLERR_MARKER):].strip(),
+                    XSDM_EVAL_ERROR,
+                    "\n".join(p for p in parts).strip(),
                     REASON_TCL_ERROR)
         error_lines = [s for s in data_lines
                        if s.startswith("ERROR:")

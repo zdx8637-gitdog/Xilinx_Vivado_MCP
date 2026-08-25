@@ -68,6 +68,11 @@ _BUILD_TIMEOUT_S = 300.0
 # because BSP static libraries (libxil.a) were already built by `app build`.
 _MAKE_TIMEOUT_S = 60.0
 
+# D-C: the compiler/make error detail can be very long. Cap what is returned
+# in the error message but ALWAYS report the total length and the truncation
+# explicitly (never silently drop output).
+_MAX_BUILD_OUTPUT_LEN = 8000
+
 # Default Vivado install root, matching vivado_bridge._DEFAULT_VIVADO_BIN's
 # parent. Overridable via VIVADO_EXEC / VIVADO_ROOT (see _find_make).
 _DEFAULT_VIVADO_ROOT = r"D:/Xilinx/Vivado/2023.1"
@@ -212,6 +217,21 @@ def _find_elf(app_dir: str) -> str | None:
         if hits:
             return os.path.normpath(hits[0])
     return None
+
+
+def _cap_build_output(text: str) -> str:
+    """Cap build/compiler output for an error message, marking truncation.
+
+    D-C: the FULL make/compiler output must reach the caller. When it exceeds
+    ``_MAX_BUILD_OUTPUT_LEN`` the retained prefix keeps the head and an explicit
+    ``...TRUNCATED: <kept>/<total>...`` marker so output is never silently
+    dropped. The total length is always recoverable from the marker.
+    """
+    text = text or ""
+    if len(text) <= _MAX_BUILD_OUTPUT_LEN:
+        return text
+    return (text[:_MAX_BUILD_OUTPUT_LEN] +
+            f"\n...TRUNCATED: {_MAX_BUILD_OUTPUT_LEN}/{len(text)}...")
 
 
 def _find_make() -> str | None:
@@ -751,8 +771,14 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
                              timeout_s=_MAKE_TIMEOUT_S, tolerate_stderr=True)
     verr = extract_bridge_error(result)
     if verr:
-        return ps_error("BUILD_FAILED", f"make in Debug failed: {verr[2]}",
-                        details={"app_name": app_name, "debug_dir": debug_dir})
+        # D-C: return the FULL make/compiler output (capped only when very
+        # long, with the truncation marker + total length), not a single line.
+        raw = verr[2]
+        capped = _cap_build_output(raw)
+        return ps_error("BUILD_FAILED", f"make in Debug failed: {capped}",
+                        details={"app_name": app_name, "debug_dir": debug_dir,
+                                 "build_output_len": len(raw),
+                                 "build_output_truncated": len(raw) > _MAX_BUILD_OUTPUT_LEN})
 
     # Verify ELF was produced after the make fallback.
     if hasattr(bridge, "observe_step"):
