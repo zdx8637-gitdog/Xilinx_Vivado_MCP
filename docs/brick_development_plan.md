@@ -376,10 +376,11 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 
 > **立项记录（2026-08-24）**：用户确认 PL UART 已断、信息统一走 PS UART；授权启动 B12-A1（DMA 验证）。DSH 宿主迁移为未来独立事项（Skill 不写宿主专属假设、`skills/zynq_dev/` 保持唯一技能源）。
 
-> **A1 完成记录（2026-08-24/25，白盒+黑盒双 PASS）**：
-> 前置整改：B03 合同简化（封条退役、留小票与对账，勘误 [B12_b03_contract_simplification_erratum.md](development/mcp/B12_b03_contract_simplification_erratum.md)；白盒首轮 BLOCKED 证据 [B12_a1_whitebox_report.md](../tests/B12_a1_whitebox_report.md)）；N3（`ps_start_hw_server` 工具，104 工具，报告 [B12_n3_hwserver_tool_report.md](development/mcp/B12_n3_hwserver_tool_report.md)）。
+> **A1 完成记录（2026-08-24/25，白盒+黑盒双 PASS）**：前置整改：B03 合同简化（封条退役、留小票与对账，勘误 [B12_b03_contract_simplification_erratum.md](development/mcp/B12_b03_contract_simplification_erratum.md)；白盒首轮 BLOCKED 证据 [B12_a1_whitebox_report.md](../tests/B12_a1_whitebox_report.md)）；N3（`ps_start_hw_server` 工具，104 工具，报告 [B12_n3_hwserver_tool_report.md](development/mcp/B12_n3_hwserver_tool_report.md)）。
 > 白盒（报告 [B12_a1_whitebox_rerun_report.md](../tests/B12_a1_whitebox_rerun_report.md)）：真板 PASS——FAULT 注入 `DMA_LOOP_FAIL` 机读 FAIL；干净构建 4 轮 OK + `DMA_LOOP_PASS` + 374 轮持续循环；发现 AXI DMA 简单模式单次 16383 字节上限 → 8KB 分块绕行（R1，P2）。
 > 黑盒（冻结基线 [B12_a1_blackbox_basis.md](../tests/B12_a1_blackbox_basis.md)，隔离区 `D:\_b12_a1_external\agent3_20260825\`）：全新无记忆智能体独立复现 **PASS**——302 次公开 MCP 调用、127/140 操作 SUCCEEDED（11 个发现期失败按 S8 恢复）、Consistency 12/12、4 轮 OK + `DMA_LOOP_PASS` 一次 + 持续循环（收尾后复读第 53 轮 OK）、目标保持 RUNNING、硬门禁逐条自查通过。黑盒同样独立命中 16383 字节上限并以 8KB 分块解决——泛化 Skill 的排障知识在全新上下文可复现。
+
+> **A1 外部可验证性补强（待办，用户 2026-08-25 裁定晚间执行）**：用户指出当前 UART 仅上行"结论"（OK/ERR 状态行），缺外部可独立核对的物证——补强为「每轮上行原始图案字节样本（如 64B，可目视样貌）+ 全 1MB CRC32 + 轮次」，外部脚本用同种子独立重算图案并比对样本/校验和，形成"他证"。需求 §3 修订 + 固件升级 + 白盒真板重跑（外部重算 PASS 证据）+ 黑盒重跑（用户定）。晚间执行，白天不跑（用户：成本考虑）。
 
 > **B12-N3 整改（2026-08-24）**：公开 MCP 新增 `ps_start_hw_server`（hw_server 本地自启、detached、幂等、有界就绪等待；只启不停，环境重启后 hw_server 消失时可自足恢复），工具数 103→104；Skill `phases/7` 7a 预检表加一行自启诊断；含 host_live 真实启动测试。报告 [B12_n3_hwserver_tool_report.md](development/mcp/B12_n3_hwserver_tool_report.md)。
 
