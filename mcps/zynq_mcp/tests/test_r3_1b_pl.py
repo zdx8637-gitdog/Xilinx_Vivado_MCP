@@ -90,6 +90,30 @@ class TestParser:
         assert r1["output"] == r2["output"]
         assert r1["system_top_sha256"] == r2["system_top_sha256"]
 
+    def test_r315_reserved_output_not_silently_overwritten(self, tmp_path):
+        """B12 fix round #3 (item #2, E contract): pl_generate_system_top writes
+        the reserved name {project}/rtl/system_top.v. A re-run that would
+        overwrite a DIFFERENT existing system_top.v must fail closed (the
+        white-box v2 "reserved name silently overwritten → top degraded"
+        regression) instead of silently clobbering it. An IDENTICAL re-run is
+        still idempotent (deterministic output)."""
+        proj = _setup_project(tmp_path)
+        out = generate_system_top("hdl/bd_wrapper_realistic.v", proj,
+                                  PLAT_REV, BP_SHA)
+        assert out["system_top_sha256"]
+        # identical re-run is idempotent (no conflict).
+        again = generate_system_top("hdl/bd_wrapper_realistic.v", proj,
+                                    PLAT_REV, BP_SHA)
+        assert again["system_top_sha256"] == out["system_top_sha256"]
+        # a previously-generated, DIFFERENT system_top.v must be refused.
+        existing = os.path.join(proj, "rtl", "system_top.v")
+        with open(existing, "w", encoding="utf-8") as f:
+            f.write("// a DIFFERENT prior generated top\n")
+        with pytest.raises(PathSafetyError) as ei:
+            generate_system_top("hdl/bd_wrapper_realistic.v", proj,
+                                PLAT_REV, BP_SHA)
+        assert ei.value.reason_code == "SYSTEM_TOP_OVERWRITE_CONFLICT"
+
     def test_r314b_two_isolated_projects(self, tmp_path):
         for pi in [0, 1]:
             pr = str(tmp_path / f"p{pi}")
@@ -455,6 +479,17 @@ class TestCallerArgValidation:
         with pytest.raises(PathSafetyError) as exc:
             generate_system_top("/etc/wrapper.v", proj, PLAT_REV, BP_SHA)
         assert exc.value.reason_code == "PATH_ABSOLUTE"
+
+    def test_r3s03b_escape_message_states_project_boundary(self, tmp_path):
+        """B12 fix round #3 (item #2, E/G contract): an input outside the
+        project directory must fail closed with a message that explicitly says
+        the input must be under the project — not a terse path fragment."""
+        proj = _setup_project(tmp_path)
+        with pytest.raises(PathSafetyError) as exc:
+            generate_system_top("../etc/outside.v", proj, PLAT_REV, BP_SHA)
+        assert exc.value.reason_code == "PATH_ESCAPE"
+        assert "must be" in str(exc.value)
+        assert "project" in str(exc.value).lower()
 
     def test_r3s04_drive_relative(self, tmp_path):
         proj = _setup_project(tmp_path)

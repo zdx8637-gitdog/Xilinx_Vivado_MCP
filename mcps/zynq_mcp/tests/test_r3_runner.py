@@ -210,6 +210,76 @@ class TestR3Runner:
         assert l2.execution_lane == EXECUTION_LANE_RECOVERY_REQUIRED
 
     @pytest.mark.asyncio
+    async def test_R305b_operation_deadline_watchdog_releases_channel(self, rtg):
+        """B12 fix round #3 (item #1): a RUNNING operation that exceeds its
+        deadline_at must be forced to TIMED_OUT and the execution channel
+        released — captured via the domain call's wait bound (min(caller,
+        remaining deadline)). A short deadline + a local_fn that never returns
+        must produce OP_TIMED_OUT + lane RECOVERY_REQUIRED, and the next
+        command (after recover_execution) must be ADMITTED."""
+        l, g, lp, sid = _setup_board(rtg); oreg = OperationRegistry(); mutex = DomainExecutionMutex()
+        runner = CommandRunner(g, lp, oreg, mutex, worker=None)
+        # a local_fn that blocks on an Event that never sets → the deadline
+        # (not the caller timeout) is what bounds it.
+        gate = asyncio.Event()
+        async def _block(a): await gate.wait(); return {}
+        # deadline = timeout_s passed to run_command → operation_contract_fields
+        # writes the op deadline from it; 0.3s forces an early TIMED_OUT.
+        r = await runner.run_command("test_dl", {}, sid, BOARD, "p5",
+                                     executor="local", local_fn=_block,
+                                     timeout_s=0.3)
+        assert r["status"] == "success"
+        oid = r["data"]["operation_id"]
+        await asyncio.sleep(1.0)
+        l2, _ = ledger_read_shared(g, lp)
+        assert l2.previous_operation["status"] == OP_TIMED_OUT
+        assert l2.previous_operation["operation_id"] == oid
+        assert l2.execution_lane == EXECUTION_LANE_RECOVERY_REQUIRED
+
+        # channel released: recover then a fresh command is admitted.
+        from mcps.zynq_mcp.control.recovery import recovery_mutator
+        l3 = ledger_transaction(g, lp, recovery_mutator("op-recover"))
+        assert l3.execution_lane == EXECUTION_LANE_IDLE
+        from mcps.zynq_mcp.control.operation_service import request_signature
+        from mcps.zynq_mcp.control.execution_gate import preflight_mutator
+        # ps_get_bsp_status is not stage-gated (and needs only board revision).
+        sig = request_signature(sid, "PS_BUILD", "ps_get_bsp_status", {}, SH)
+        l4 = ledger_transaction(g, lp, preflight_mutator(
+            "ps_get_bsp_status", {}, sid, BOARD, "p5",
+            f"op-{uuid.uuid4().hex}", sig))
+        assert l4.active_operation is not None
+        assert l4.active_operation["status"] == OP_ACCEPTED
+
+    @pytest.mark.asyncio
+    async def test_R305c_wait_bound_uses_remaining_deadline(self, rtg):
+        """B12 fix round #3 (item #1): the domain-call wait bound is
+        min(caller value, remaining deadline). A caller timeout far larger
+        than the (short) operation deadline must be capped by the deadline."""
+        from mcps.zynq_mcp.control.domain_runner import (
+            _deadline_capped_timeout,
+        )
+        # remaining deadline 0.3 < caller 5 → 0.3 wins.
+        assert _deadline_capped_timeout(5.0, 0.3) == 0.3
+        assert _deadline_capped_timeout(0.2, 5.0) == 0.2
+        # None (no caller bound) + remaining → remaining.
+        assert _deadline_capped_timeout(None, 7.0) == 7.0
+        # remaining None (op has no deadline) → caller bound unchanged.
+        assert _deadline_capped_timeout(5.0, None) == 5.0
+        assert _deadline_capped_timeout(None, None) is None
+
+        # integration: only the operation deadlil_bound path triggers TIMED_OUT.
+        l, g, lp, sid = _setup_board(rtg); oreg = OperationRegistry(); mutex = DomainExecutionMutex()
+        runner = CommandRunner(g, lp, oreg, mutex, worker=None)
+        gate = asyncio.Event()
+        async def _block(a): await gate.wait(); return {}
+        await runner.run_command("test_dl2", {}, sid, BOARD, "p5",
+                                 executor="local", local_fn=_block, timeout_s=0.3)
+        await asyncio.sleep(1.0)
+        l2, _ = ledger_read_shared(g, lp)
+        assert l2.previous_operation["status"] == OP_TIMED_OUT
+        assert l2.previous_operation["tool_name"] == "test_dl2"
+
+    @pytest.mark.asyncio
     async def test_R306_local_crash_outcome_unknown(self, rtg):
         l, g, lp, sid = _setup_board(rtg); oreg = OperationRegistry(); mutex = DomainExecutionMutex()
         runner = CommandRunner(g, lp, oreg, mutex, worker=None)

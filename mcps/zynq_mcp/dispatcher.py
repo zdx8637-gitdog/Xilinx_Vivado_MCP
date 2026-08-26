@@ -198,6 +198,34 @@ class ZynqDispatcher:
             return _text(error(str(exc), code="INTERNAL_ERROR").to_dict())
 
 
+def _existing_project_artifacts_hint(project_path: str) -> dict:
+    """B12 fix round #3 (item #3): detect already-produced project artifacts.
+
+    Returns an advisory dict describing prior products under ``project_path``
+    (a platform manifest, XSA, or bitstream). Purely informative — it does NOT
+    change the workflow stage or any gate, so a re-create_session on a project
+    that still holds products gets an explicit prompt instead of silently
+    restarting at PLATFORM_DESIGN. Empty dict when nothing (or nothing
+    recognizable) is found (fail-closed: no false "resume").
+    """
+    try:
+        root = Path(project_path)
+    except (TypeError, ValueError):
+        return {}
+    if not root.is_dir():
+        return {}
+    hints = {}
+    plat_dir = root / "manifests" / "platform"
+    if plat_dir.is_dir() and any(plat_dir.glob("sha256_*.json")):
+        hints["platform_manifest"] = True
+    if (root / "platform.xsa").is_file():
+        hints["platform_xsa"] = True
+    if (root / "bitstream").is_dir() and any(
+            (root / "bitstream").glob("*.bit")):
+        hints["bitstream"] = True
+    return hints
+
+
 def _create_session(args, disp):
     bid = args.get("board_id"); pp = args.get("project_path")
     if not isinstance(bid, str) or not isinstance(pp, str) or not bid.strip() or not pp.strip():
@@ -210,11 +238,14 @@ def _create_session(args, disp):
     except Exception as e: return error(str(e), code="INTERNAL_ERROR").to_dict()
     ctx = ledger.context
     disp._ledger = ledger
-    return success({"session_id": ctx["session_id"], "board_id": ctx["board_id"],
+    resume_hint = _existing_project_artifacts_hint(ctx["project_path"])
+    result = {"session_id": ctx["session_id"], "board_id": ctx["board_id"],
         "project_path": ctx["project_path"], "board_package_revision": ctx["board_package_revision"],
         "board_profile_sha256": ctx.get("board_profile_sha256", ""),  # E005
-        "current_stage": ctx["current_stage"], "ledger_sequence": ledger.ledger_sequence},
-        context_ref=ctx["session_id"]).to_dict()
+        "current_stage": ctx["current_stage"], "ledger_sequence": ledger.ledger_sequence}
+    if resume_hint:
+        result["resume_hint"] = resume_hint
+    return success(result, context_ref=ctx["session_id"]).to_dict()
 
 
 async def _close_session_atomic(args, disp):

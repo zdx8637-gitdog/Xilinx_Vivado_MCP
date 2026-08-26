@@ -100,17 +100,26 @@ def _validate_contained(rel_path, base_dir, *, field_name="path"):
     if os.path.isabs(normalized):
         if is_manifest:
             raise ManifestBindingError("MANIFEST_PATH_ESCAPE", f"{field_name}={rel_path}")
-        raise PathSafetyError("PATH_ABSOLUTE", f"{field_name}={rel_path}")
+        raise PathSafetyError("PATH_ABSOLUTE",
+                              f"{field_name} must be a project-relative path "
+                              f"under the project directory, got absolute "
+                              f"{rel_path!r}")
 
     if len(normalized) >= 2 and normalized[1] == ":" and not os.path.isabs(normalized):
         if is_manifest:
             raise ManifestBindingError("MANIFEST_PATH_ESCAPE", f"{field_name}={rel_path}")
-        raise PathSafetyError("PATH_DRIVE_RELATIVE", f"{field_name}={rel_path}")
+        raise PathSafetyError("PATH_DRIVE_RELATIVE",
+                              f"{field_name} must be a project-relative path "
+                              f"under the project directory, got drive-relative "
+                              f"{rel_path!r}")
 
     if normalized.startswith("//"):
         if is_manifest:
             raise ManifestBindingError("MANIFEST_PATH_ESCAPE", f"{field_name}={rel_path}")
-        raise PathSafetyError("PATH_ABSOLUTE", f"{field_name}={rel_path}")
+        raise PathSafetyError("PATH_ABSOLUTE",
+                              f"{field_name} must be a project-relative path "
+                              f"under the project directory, got UNC "
+                              f"{rel_path!r}")
 
     real_base = os.path.realpath(base_dir)
     resolved = os.path.realpath(os.path.join(real_base, normalized))
@@ -119,17 +128,23 @@ def _validate_contained(rel_path, base_dir, *, field_name="path"):
         if os.path.commonpath([real_base, resolved]) != real_base:
             if is_manifest:
                 raise ManifestBindingError("MANIFEST_PATH_ESCAPE", f"{field_name}={rel_path}")
-            raise PathSafetyError("PATH_ESCAPE", f"{field_name}={rel_path}")
+            raise PathSafetyError("PATH_ESCAPE",
+                                  f"{field_name}={rel_path} must be contained "
+                                  f"under the project directory {base_dir!r}")
     except ValueError:
         if is_manifest:
             raise ManifestBindingError("MANIFEST_PATH_ESCAPE", f"{field_name}={rel_path} (cross-drive)")
-        raise PathSafetyError("PATH_ESCAPE", f"{field_name}={rel_path} (cross-drive)")
+        raise PathSafetyError("PATH_ESCAPE",
+                              f"{field_name}={rel_path} must be contained under "
+                              f"the project directory (cross-drive forbidden)")
 
     if os.name == "nt":
         if not os.path.normcase(resolved).startswith(os.path.normcase(real_base) + os.sep) and os.path.normcase(resolved) != os.path.normcase(real_base):
             if is_manifest:
                 raise ManifestBindingError("MANIFEST_PATH_ESCAPE", f"{field_name}={rel_path}")
-            raise PathSafetyError("PATH_ESCAPE", f"{field_name}={rel_path}")
+            raise PathSafetyError("PATH_ESCAPE",
+                                  f"{field_name}={rel_path} must be contained "
+                                  f"under the project directory {base_dir!r}")
 
     return resolved
 
@@ -596,7 +611,24 @@ def generate_system_top(wrapper_path, project_path, platform_revision, board_pro
     output += "\n       );\n"
     output += "endmodule\n"
 
-    # 7. Write atomically
+    # 7. Guard the reserved output name (E contract): a re-run must never
+    #    silently overwrite a DIFFERENT existing system_top.v (the white-box
+    #    v2 "reserved name, silent overwrite → top degraded" regression). An
+    #    identical re-run is idempotent and allowed (deterministic output). A
+    #    differing existing file fails closed with an explicit error so the
+    #    caller knows the reserved output was already produced by another
+    #    revision/configuration and would be clobbered.
+    if os.path.exists(output_path):
+        prior_sha = sha256_file(output_path)
+        new_sha = "sha256:" + hashlib.sha256(output.encode("utf-8")).hexdigest()
+        if prior_sha != new_sha:
+            raise PathSafetyError(
+                "SYSTEM_TOP_OVERWRITE_CONFLICT",
+                f"reserved output {output_path} already exists with different "
+                f"content (prior_sha={prior_sha}, new_sha={new_sha}); refusing to "
+                f"silently overwrite it")
+
+    # 8. Write atomically
     _atomic_write_text(output_path, output)
     output_sha = "sha256:" + hashlib.sha256(output.encode("utf-8")).hexdigest()
 

@@ -437,6 +437,61 @@ def _read_ledger_for_busy(guard, ledger_path):
         return None
 
 
+def operation_remaining_deadline(guard, ledger_path, op_id, *, now_s=None):
+    """Return the remaining seconds to an operation's deadline, or None.
+
+    Reads the active operation's ``deadline_at`` (the frozen admission-written
+    deadline) from the Ledger and returns ``max(0, deadline_ts - now)``. None
+    when the op is absent / not the active one / deadline is unparseable —
+    fail-closed: the caller then falls back to its own explicit bound.
+
+    This is the single source for capping a domain call's wait time by the
+    operation's remaining deadline (B12 fix round #3 item #1: a RUNNING op that
+    exceeds its deadline must be forced to TIMED_OUT and release the channel,
+    instead of running unbounded past deadline_at and deadlocking the lane).
+    """
+    try:
+        ledger, _ = ledger_read_shared(guard, ledger_path)
+    except Exception:
+        return None
+    ao = ledger.active_operation
+    if not isinstance(ao, dict) or ao.get("operation_id") != op_id:
+        return None
+    deadline = ao.get("deadline_at")
+    if not isinstance(deadline, str) or not deadline.strip():
+        return None
+    import datetime
+    try:
+        text = deadline[:-1] + "+00:00" if deadline.endswith("Z") else deadline
+        dl = datetime.datetime.fromisoformat(text)
+        if dl.tzinfo is None:
+            dl = dl.replace(tzinfo=datetime.timezone.utc)
+        dl_ts = dl.timestamp()
+    except (TypeError, ValueError):
+        return None
+    now_s = time.time() if now_s is None else now_s
+    return max(0.0, dl_ts - now_s)
+
+
+def _deadline_capped_timeout(timeout_s, remaining):
+    """``asyncio.wait_for`` bound = min(caller timeout, remaining deadline).
+
+    ``timeout_s`` None → only the operation deadline binds (the default tool
+    bound otherwise silently exceeds it). ``remaining`` None → ``timeout_s``
+    (or None, letting the per-tool default apply). Both None → None (the
+    callers' per-tool default remains in force).
+    """
+    candidates = []
+    if timeout_s is not None:
+        candidates.append(float(timeout_s))
+    if remaining is not None:
+        candidates.append(float(remaining))
+    if not candidates:
+        return None
+    return max(0.0, min(candidates))
+
+
+
 # ---- Command Runner ----
 # E006: domain input revision mapping — revision field used for request_signature + input_artifact_revision
 _DOMAIN_INPUT_REVISION_FIELD: dict[str, str] = {
@@ -845,6 +900,26 @@ class CommandRunner:
                 self._op_registry.unregister_task(op_id)
                 return
             self._op_registry.transition(op_id, OP_RUNNING)
+
+            # B12 fix round #3 (item #1): cap every domain-call wait by the
+            # operation's REMAINING deadline so a RUNNING op can never exceed
+            # its deadline_at. When the deadline expires mid-call the
+            # asyncio.TimeoutError below forces TIMED_OUT + releases the lane
+            # (instead of the op running unbounded and deadlocking it). This
+            # makes the operation deadline the authoritative time bound and
+            # keeps it the SINGLE SOURCE for both the op lifecycle and the
+            # per-call wait — they can no longer diverge.
+            remaining = operation_remaining_deadline(
+                self._guard, self._ledger_path, op_id)
+            wait_bound = _deadline_capped_timeout(timeout_s, remaining)
+            # Re-point timeout_s to the capped bound so EVERY downstream wait
+            # (asyncio.wait_for `timeout_s or N` and the worker path
+            # `execute_tool(timeout_s=timeout_s)`) is bounded by the operation
+            # deadline. When the op has no parseable deadline, wait_bound is
+            # None so the original timeout_s (or None → per-tool default)
+            # remains in force.
+            if wait_bound is not None:
+                timeout_s = wait_bound
 
             if executor == "local" and local_fn is not None:
                 if tool_name.startswith("ps_"):

@@ -28,6 +28,20 @@ wrapper + top；constraints；top 由方案决定）→ `pl_generate_target` →
 `pl_synthesize` → `pl_place` → `pl_route` → `pl_analyze_timing`（timing 通过）
 → `pl_generate_bitstream`（产出 `<BITSTREAM_PATH>`）→ PL Manifest 自动发布。
 
+> **约束/综合实现检查纪律（硬性，违反即视为实现不合格）：**
+>
+> 1. **XDC 注释必须独占行**：行内 `#` 会被 Vivado 误解析为 option 值，触发
+>    `Common 17-161 Invalid option value '#' for 'objects'` 并使该端口约束失效
+>    （进而 impl 报 `UCIO-1` 未约束端口、write_bitstream 失败——已两次踩坑）。
+>    所有 XDC 注释必须以独占一行（`# ...`）书写，**禁止** 在
+>    `set_property ... # 注释` 后追加行内注释。
+> 2. **综合/实现后必须检查多驱动与未约束端口警告**：`pl_synthesize` /
+>    `pl_place` / `pl_route` 成功后，必须核对对 Log 中的
+>    `[Synth 8-XXXX] multiple drivers` 类多驱动警告与 `[DRC UCIO-1]` /
+>    `[Common 17-XXXX]` 未约束端口警告。RTL 多驱动曾**静默成活板 bug**
+>    （不报错、时序通过但行为错误）。任一此类警告都必须先定位到具体
+>    端口/信号并确认无数据冲突，才允许继续下一阶段；无法确认时视为失败。
+
 ## 5.3 PS（软件链）
 
 按附录「PS 软件链」执行：`ps_import_hardware`（XSA staging 规避同文件冲突）→

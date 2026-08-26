@@ -183,3 +183,31 @@ class TestSession:
         result = handle_get_session_info({"session_id": "ledger-sid"}, g, lp, g.workspace_id)
         assert result["status"] == "success"
         assert result["data"]["session_id"] == "ledger-sid"
+
+
+class TestExistingProjectHint:
+    """B12 fix round #3 (item #3): create_session must give a clear advisory
+    when the project already holds prior artifacts, instead of silently
+    restarting at PLATFORM_DESIGN (the white-box R5 "stuck after close+recreate"
+    case). The hint is purely informative — it changes no gate or stage."""
+
+    def test_detects_platform_manifest_xsa_bitstream(self, tmp_path):
+        from mcps.zynq_mcp.dispatcher import _existing_project_artifacts_hint
+        (tmp_path / "manifests" / "platform").mkdir(parents=True)
+        (tmp_path / "manifests" / "platform" / "sha256_abc.json").write_text("{}")
+        (tmp_path / "platform.xsa").write_bytes(b"xsa")
+        (tmp_path / "bitstream").mkdir()
+        (tmp_path / "bitstream" / "system_top.bit").write_bytes(b"bit")
+        hint = _existing_project_artifacts_hint(str(tmp_path))
+        assert hint.get("platform_manifest") is True
+        assert hint.get("platform_xsa") is True
+        assert hint.get("bitstream") is True
+
+    def test_empty_project_yields_no_hint(self, tmp_path):
+        from mcps.zynq_mcp.dispatcher import _existing_project_artifacts_hint
+        assert _existing_project_artifacts_hint(str(tmp_path)) == {}
+
+    def test_nonexistent_project_yields_no_hint(self, tmp_path):
+        from mcps.zynq_mcp.dispatcher import _existing_project_artifacts_hint
+        assert _existing_project_artifacts_hint(
+            str(tmp_path / "does-not-exist")) == {}
