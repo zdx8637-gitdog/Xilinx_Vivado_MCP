@@ -83,6 +83,41 @@ n_samples: 1733, duration_s: 0.8665, fs: 2000
 - 框架级限制（记录为 P2/已知）：MCP UART 捕获 115200/64KB 突发偶发丢字节（影响数据完整性，已用清洁窗口规避）；`pl_generate_bitstream` 生成的 `bitstream_path` 实际落在 impl_1 运行目录（manifest 内相对路径不指向实际文件，verify_consistency 仍通过）。
 - 未自行冻结/越级。全量 S0-S8 贯通，盲测判定 PASS（外部复核一致）。
 
+## 7. 第 7 轮（v2.2）快照冻结 + 采样率标定：重大发现（进行中/部分完成）
+
+### 7.1 快照冻结修复（Option B）已验证成功（454/1353 帧跳变根因已消除）
+- 根因：旧流程在 **5.6s 上传期间直接读取正在被写入的环形缓冲**，写指针 2.7 圈追及读指针 → 数据 454/1353 帧跳变 → 上次 11Hz 误读与波形截断。
+- 修复（Option B，PS 侧）：`do_upload` 在 SNAP_ARM 后、**采集追及前把整段 32KB 快照一次性快速读入 DDR（`g_snap`）冻结**，再从 DDR 上传（读取源为冻结的 `g_snap`，不受采集继续写入影响）。数据流分批（每 256 帧 2ms）。
+- 上板验证：帧 `data chars = 64000`（**完整 2000 帧，无丢字节**、无 454/1353 跳变）、`Garbled=18`（在位置 108/36078/…）、帧头 `FS=2000/CHANNELS=8/SAMPLES=2000` 正确、A2_PASS matched。**帧时间轴连续**（快照冻结）。
+
+### 7.2 采样率标定（FSCAL）→ **实际帧率 = 4000 Hz，非名义 2000 Hz**（重大）
+```
+FSCAL rate=3999 cycles=50000 dwptr=4000
+```
+- 实测 ~4000 帧/秒 → `cfg_div=50000` 下 `FCLK0=4000×50000=200 MHz`（**非平台配置的 100 MHz**）。
+- ⇒ 名义 2000Hz 失真 2×；快照 2000 帧实为 0.5s。**按实际 fs 重算频率需 ×2**（上一轮 11Hz → 若按实际 fs 约 22Hz，但见 7.3）。
+- CPU 全局定时器（XTime）：XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ=666666687；FSCAL 用 `XTime_GetTime` 指针 API。
+
+### 7.3 信号缺失/ADC 数据不稳定（**新阻塞**）
+- 本轮多次 Option B 采集（frame_B/B2/B3/B4）各通道均值/标准差**不稳定且无干净正弦**：frame_B 全通道近 DC（std<1）；frame_B2/B4 出现 DC 偏置（~-100 至 -120 LSB）+ std~100 噪声；无任一通道出现上一轮类似的 ~3100 LSB 干净正弦。
+- 疑似根因（设计可修）：`T_CONV_CLK=200` 在 **200MHz 实际 FCLK0 下仅 1us**，小于 AD7606C-16 的转换时间（~4us）→ ADC FSM 在转换未完成时读数（无效/不稳定）。
+- 且需确认：信号发生器是否仍驱动某 ADC 通道（盲测信号）。上轮（复位前）干净信号疑似为仅对跳动前片段；本次 Option B（冻结快照）无干净信号。
+- 结论：**在信号/ADC 数据稳定前，无法可靠做通道/频率/Vpp 测量**。上一轮 11Hz 判定撤销（基于跳变数据）。
+
+### 7.4 待办（需物理/主机侧确认或授权重建）
+1. 确认盲测信号发生器仍驱动某通道（+10V 量程内正弦）。
+2. 修正采样率：将实际帧率定到精确 2000Hz（真 FCLK0=100MHz，或按 200MHz 把 cfg_div 改 100000）；并加大 `T_CONV_CLK`（如到 ≥1000，覆盖 ADC `t_CONV`~4us），重跑 `project_h`（platform+PL+bitstream 全重跑）。
+3. 部署后抓 FSCAL（`actual_fs`），按 `actual_fs` 重测通道/频率/Vpp + `external_verify` 独立复核；证据更新至 `evidence/`（CSV/measurement.json/8 通道 PNG/FSCAL）。
+
+### 7.5 FCLK0 之谜调查结论（证据：**非框架缺陷，为标定算法用错 XTime 速率**）
+- 交叉证据：
+  - **BD（platform_bd.bd）**：`PCW_ACT_FPGA0_PERIPHERAL_FREQMHZ = 100.000000`（Vivado 计算的**实际** FCLK0）、`PCW_FPGA0_PERIPHERAL_FREQMHZ = 100`、`PCW_FCLK0_PERIPHERAL_CLKSRC = IO PLL`、`PCW_FPGA_FCLK0_ENABLE = 1`。⇒ 配置意图与实际均为 **FCLK0 = 100 MHz**。
+  - **`xtime_l.h`**：注释 `/* Global Timer is always clocked at half of the CPU frequency */`，`#define COUNTS_PER_SECOND (XPAR_CPU_CORTEXA9_CORE_CLOCK_FREQ_HZ / 2)`。⇒ **XTime 全局定时器 = CPU 时钟的一半（≈333.3 MHz，非 666.7 MHz）**。
+  - **configure_ps7**：`{"fclk0_mhz":100}`（本轮 18:14:14 调用，配置意图 100MHz）。
+  - **ps7_init.tcl**：未发现 FCLK0（0xF8000180 FPGA0_CLK_CTRL）寄存器写入（运行时 FPGA 时钟分频由 BD/位流常量决定，非 ps7_init.tcl 设置）。
+- **判定**：配置/硬件均真实为 **FCLK0=100MHz**（`cfg_div=50000` → **2000 Hz 精确**）。上一轮 FSCAL `rate=3999` 的"200MHz"是**标定算法误用全 CPU 频率**（`XTime` 实为 CPU/2）导致读数 ×2；**并非 configure_ps7 未生效，也非时钟接线取错时钟**。`cfg_div=50000` 本就正确，无需改为 100000（改 100000 在 100MHz 下会得 1000Hz，错误）。
+- **正确修复**：保持 `cfg_div=50000`；把 `calibrate_fs` 的 XTime 速率改为 `CPU_FREQ/2`（或直接 `XTime_GetTime` 差分/`(CPU_FREQ/2)`），使 FSCAL 实测 = 2000Hz；并加大 `T_CONV_CLK`（≥400，覆盖 AD7606C-16 `t_CONV`≈4us@100MHz，用 600 稳妥）。
+
 ## 6. 第 7 轮：标定与证据加固（进行中/部分完成）
 
 ### 6.1 RTL 分频系数核对（已完成 → 名义 2000Hz 正确）
