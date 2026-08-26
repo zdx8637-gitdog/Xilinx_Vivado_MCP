@@ -105,11 +105,13 @@ def _load(path: str, fmt: str, fs: float | None):
 
 
 def _estimate_frequency(fs: float, x, mean: float):
-    """频率估计：插值过零给初值 + 四参数正弦最小二乘拟合精修。
+    """频率估计：插值过零初值 + 频率网格扫描 + 有界 Gauss-Newton 精修。
 
-    1s 窗口内朴素过零只有 ±0.5Hz 分辨率，达不到 ≤1% 对账精度；
-    此处用（a）线性插值过零求平均周期，再（b）Gauss-Newton 拟合
-    v(t)=A*sin(2πf t+φ)+C 精修。拟合失败时退回（a）。
+    1s 窗口内朴素过零只有 ±0.5Hz 分辨率；直接用过零初值跑 4 参数
+    Gauss-Newton 在接近整数周期时 f 与 φ 强耦合，可能滑向劣质局部最优
+    （B12-A2 实测：发散到 +0.2Hz 且幅值偏低）。改为：过零初值 → 粗网格
+    （±0.75Hz、步长 0.01Hz）线性最小二乘选最优 f → 以网格最优为初值做
+    有界 GN 精修（步长钳制，防跳离）。拟合失败时退回过零估计。
     """
     n = len(x)
     ts = [i / fs for i in range(n)]
@@ -126,26 +128,39 @@ def _estimate_frequency(fs: float, x, mean: float):
     if zc_freq is None:
         return None, len(rise_t)
 
-    # (b) 四参数正弦最小二乘拟合（Gauss-Newton）
     try:
         import numpy as np
         t = np.asarray(ts, dtype=float)
         y = np.asarray(x, dtype=float)
-        amp = (max(x) - min(x)) / 2.0
-        w = 2.0 * math.pi * zc_freq
-        phi = 0.0
-        c = mean
-        for _ in range(8):
+
+        # (b) 频率网格扫描：每个候选 f 做 [sin, cos, 1] 线性最小二乘，
+        #     选残差最小的 f 作为 GN 初值（远离劣质局部最优）。
+        best_f, best_r = zc_freq, float("inf")
+        f0 = zc_freq - 0.75
+        while f0 <= zc_freq + 0.75:
+            w = 2.0 * math.pi * f0
+            A = np.column_stack([np.sin(w * t), np.cos(w * t), np.ones(n)])
+            coef, *_ = np.linalg.lstsq(A, y, rcond=None)
+            r = float(np.sum((y - A @ coef) ** 2))
+            if r < best_r:
+                best_r, best_f = r, f0
+            f0 += 0.01
+        w = 2.0 * math.pi * best_f
+        A = np.column_stack([np.sin(w * t), np.cos(w * t), np.ones(n)])
+        coef, *_ = np.linalg.lstsq(A, y, rcond=None)
+        amp = float(np.hypot(coef[0], coef[1]))
+        phi = float(math.atan2(coef[1], coef[0]))
+        c = float(coef[2])
+
+        # (c) 有界 GN 精修（频率步长钳制在 0.05Hz 内，防跳离）
+        for _ in range(20):
             s = np.sin(w * t + phi)
             cw = np.cos(w * t + phi)
             jac = np.column_stack([s, amp * t * cw, amp * cw, np.ones(n)])
             res = y - (amp * s + c)
-            try:
-                step, *_ = np.linalg.lstsq(jac, res, rcond=None)
-            except np.linalg.LinAlgError:
-                break
+            step, *_ = np.linalg.lstsq(jac, res, rcond=None)
             amp += step[0]
-            w += step[1]
+            w += float(np.clip(step[1], -2 * math.pi * 0.05, 2 * math.pi * 0.05))
             phi += step[2]
             c += step[3]
             if abs(step[1]) < 1e-9:
