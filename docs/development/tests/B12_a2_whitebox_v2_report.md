@@ -178,3 +178,69 @@ n_samples: 566, duration_s: 0.283, fs: 2000
 
 ### 8.4 遗留 P2（记录，不阻塞）
 - MCP UART 捕获 115200/64KB 突发在**本机**仍偶发丢/错 ~20-40 hex 字符（<0.1%），会破坏跨丢字的帧对齐。故测量使用**帧对齐前缀**（raw3=566 帧字节干净），而非全 2000 帧；已验证信号结论在多次捕获中稳健一致。若需求 2000 帧零丢字节，需在固件/捕获侧进一步背压优化（见 §7.4 分批固件，待 JTAG 恢复部署）。
+
+---
+
+## 9. project_h 全量重跑（修正版：cfg_div=50000 + T_CONV_CLK=600 + FSCAL=XTime/2）✅ 全贯通
+
+> **背景（父轮次确认）**：主代理确认修正结论——**FCLK0=100MHz（框架无责），cfg_div=50000 → 2000Hz 本来就是对的**；"4000Hz" 是固件 XTime 标定误用全 CPU 频率（应为 CPU/2）所致。授权修正方案并放行 project_h 全量重跑。
+
+### 9.1 修正内容（RTL + 固件）
+- **RTL**（`project_h/rtl/adc_ringbuf_top.v`）：保持 `cfg_div` 默认 `CLK_PER_FRAME=FCLK_HZ/FS=100000000/2000=50000`；`T_CONV_CLK` 200 → **600**（6µs@100MHz > AD7606C-16 t_CONV≈4µs，解决转换未完成即读的不稳定）。快照冻结（Option B）与分批上传（256 帧/2ms）保留。
+- **固件**（`project_h/ps_src/main.c`）：`calibrate_fs` 与 `delay_ms` 改用真实 XTime 速率——`#define XTIME_FREQ ((u64)CPU_FREQ/2)`（xtime_l.h：Global Timer 恒为 CPU/2）。
+- 自动生成的 `system_top.v` 由 `pl_generate_system_top` 重建（port_count=61）；PL 工程 top=`adc_top`（wrapper + adc_ringbuf_top），source=[BD, adc_ringbuf_top.v, adc_top.v, wrapper], constraints=[adc7606c.xdc]。
+
+### 9.2 构建与一致性（全新一次性路径，全部成功）
+| 阶段 | 结果 |
+|---|---|
+| 平台（BD + XSA + manifest） | platform rev `sha256:03fae7cc…`；XSA sha `73f9dbb4…`；address_map={M_AXI_GP0_0 @0x43c00000}；FCLK_CLK0→[FCLK_CLK0, M_AXI_GP0_ACLK] |
+| PL（synth/place/route/timing/bitstream） | synth+place+route Complete；**timing_met=true (WNS=0)**；bitstream `project_h/bitstream/adc_top.bit`（sha `0f911f65…`）→ PL manifest `sha256:3c7d8bc9…` |
+| PS（compile） | `a2_upload_h/Debug/a2_upload_h.elf`（ELFCLASS32/ARM；sha `8d116dbd…`）；PS manifest `sha256:87a521fc…`；main.c（XTIME_FREQ 修正）已编译入 ELF |
+| verify_consistency | **12 / 12 all_passed=true**（revisions/board profile/address map/XSA/bitstream/xdc/ELF/xparameters） |
+
+> **D2 框架阻塞已绕过（关键）**：`pl_generate_bitstream` 首次失败 `BITSTREAM_NOT_FOUND`——框架把 `output_path`=impl_1 运行目录的位流（`impl_1/adc_top.bit`）作为目标路径，`file copy` 对"源=自身"失败 → 发布未完成。绕法：把 bitstream 输出路径改为**独立目录** `project_h/bitstream/adc_top.bit`，使源（impl_1 运行目录）≠ 目标，复制成功 → PL manifest 发布 → verify_consistency 全绿。
+
+### 9.3 部署（JTAG 8 步 + UART）
+hw_server → connect → list → select(ARM #0) → ps7_init（**必须传 tcl_path**）→ `pl_program_fpga(new bitstream)` → loadhw(XSA) → download_elf → run。全部 SUCCEEDED；`ps_ensure_arm_accessible` 确认 4 目标枚举（APU/ARM-Cortex-A9 #0/#1/xc7z020），target #2 = Cortex-A9 #0 Running。**新 bitstream + 修正固件已上板运行。**
+
+### 9.4 上板 FSCAL 实测 → **确认 FCLK0=100MHz / fs=2000Hz 正确**（重要）
+```
+BOOTDIAG CTRL=00000001 STAT=80000003 WPTR=0007955c DEPTH=1000 SAMPLES=07d0 CH=8 CFG0=0000c350 CFG1=00001234 SNAPSTAT=80000003 SNAPBASE=00000d96
+B12_A2_ADC_RINGBUF_V1
+FS=2000 CHANNELS=8 SAMPLES=2000 BITS=16 RANGE=+-10 FRAMETYPE=ascii_hex CHECKSUM_ALG=sum16 CMD=UPLOAD
+FSCAL rate=1999 cycles=50000 dwptr=2000
+READY
+```
+- **FSCAL rate=1999 Hz**（≈2000 Hz）——修正固件实测，`CFG0=0xc350`=50000（cfg_div）。**实测 = 名义 2000Hz**，排除上一轮"4000Hz/200MHz"误读。⇒ **cfg_div=50000 正确，勿改 100000**（100MHz 下会得 1000Hz，错误）。
+
+### 9.5 采集 + 盲测测量（由数据推导，内部 + 外部独立复核一致）
+- 全帧捕获（`b12_a2_ph_frame_raw.txt`，A2_PASS matched，CHECKSUM=dd3a）。因主机捕获仍有字节丢失（P2），用**帧对齐前缀**（`lead_hex=24104` → **753 帧=0.3765s**，字节干净）。
+- 帧对齐前 8 通道统计（753 帧）：
+  ```
+  ch1: std=0.7   ch2: std=0.6   ch3: std=0.6   ch4: std=0.6
+  ch5: std=1.2   ch6: std=3166  min=-4394 max=4388  <-- 信号
+  ch7: std=0.6   ch8: std=0.7
+  ```
+  其余 7 通道幅值 <20 LSB（近 DC 噪声），**仅 ch6 为干净正弦**。
+- **测量结果**：
+  ```
+  active_channel_silkscreen: 6        (0-based index5)
+  frequency_hz: 10.62 (内部 FFT，名义 fs) / 9.9649 (外部 4 参数正弦拟合)  → ≈10Hz
+  freq_actual_fs: 10.62               (FSCAL=1999，与 nominal 差异可忽略)
+  vpp_raw: 8782   vpp_volts: 2.6801   amp: ~1.34V
+  n_samples: 753, duration_s: 0.3765, fs: 2000
+  ```
+- 外部独立复核（`tools/scripts/b12_a2_external_verify.py`，零预置常量）：`active_channel_silkscreen=6, frequency_hz=9.9649, vpp_raw=8782, vpp_volts=2.6801` —— **与内部测量一致**。
+- 波形图（`b12_a2_ph_waveforms_8ch.png`）目视确认：**CH6 干净正弦**（~1.34V，~10.6Hz），其余 7 通道平直/近 DC。
+
+### 9.6 结论（盲测，由数据推导，与外部独立复核一致）
+- **活跃通道 = 板级丝印 CH6**（0-based ch5）。
+- **信号频率 ≈ 10 Hz**（FFT 10.62 / 正弦拟合 9.96；短窗口分辨率受限）。
+- **信号幅值 Vpp ≈ 2.68 V**（±10V 量程换算；正弦基波幅值 ~1.34V peak）。
+- **修正后的 project_h 全链路贯通**：cfg_div=50000 → fs=2000Hz（FSCAL=1999 实测确认）＋ T_CONV_CLK=600（ADC 采集稳定，ch6 干净正弦）＋ FSCAL=XTime/2（读数正确）。与 §8（波形发生器接入后的重测）结论一致，进一步固化了 ch6/10Hz/2.68V 的盲测判定。
+
+### 9.7 遗留 P2（记录，不阻塞）
+- **MCP UART 捕获 115200/64KB 在本机仍偶发丢/错字节**（每帧丢 ~20-100 hex 字符，<0.1%），破坏跨丢字帧对齐，故无法获得 2000 帧"sum16 通过"的完整字节干净帧；测量用**帧对齐前缀**（753 帧字节干净）进行，信号结论在多次捕获稳健一致。若需 2000 帧零丢字节，需进一步固件/捕获侧背压优化。
+- `pl_generate_bitstream` 的"目标=impl_1 运行目录"发布 bug（D2，P2）已绕过（独立输出路径），建议框架侧修复 `file copy` 源=目标的自复制失败逻辑。
+- `pl_reset_run` 转发 `-force` 到 `reset_runs` 报 "Unknown option '-force'"（小 bug，P2，本次绕过，未影响）。
+- `address_map` 为 0x43c00000（assign_bd_address 默认），非 project_g 的 {}；因无内部 AXI 从机（M_AXI_GP0 直连 RTL，araddr[19:0] 直接解码），0x40000000（固件 BASE）在硬件上仍正常工作，且 verify_consistency 通过，属元数据差异，不影响采集。
