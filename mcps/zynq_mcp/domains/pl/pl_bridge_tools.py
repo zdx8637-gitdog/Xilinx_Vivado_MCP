@@ -810,13 +810,23 @@ async def pl_generate_bitstream(bridge, *, path, force=None) -> dict:
             # The run writes its canonical bit file in the run directory.
             # Copy that verified run output to the public API's requested
             # path only after STATUS reports Complete!.
+            # B12 fix round #4 (D2): if the caller's requested output path IS
+            # the run's own bit file (source == target), `file copy X X` fails
+            # (Windows cannot copy a file onto itself), which the previous code
+            # surfaced as BITSTREAM_NOT_FOUND. Detect the same-file case with
+            # `file normalize` and skip the copy — the source already IS the
+            # requested publication path — while still verifying the file
+            # exists (fail-closed). Distinct-source paths still copy normally.
             copy_tcl = (
                 "set __o3_run [get_runs {impl_1}]\n"
                 "set __o3_dir [get_property DIRECTORY $__o3_run]\n"
                 "set __o3_top [get_property TOP [get_filesets sources_1]]\n"
                 "set __o3_bit [file join $__o3_dir \"$__o3_top.bit\"]\n"
                 "if {![file exists $__o3_bit]} {error \"BITSTREAM_NOT_FOUND\"}\n"
-                f"if {{[catch {{file copy{force_flag} $__o3_bit "
+                f"if {{[string equal [file normalize $__o3_bit] "
+                f"[file normalize {{{_tcl_path(output_path)}}}]]}} {{\n"
+                "  puts BIT_DONE  ; # source == requested output, already published\n"
+                f"}} elseif {{[catch {{file copy{force_flag} $__o3_bit "
                 f"{{{_tcl_path(output_path)}}}}} __o3_copy_err]}} {{\n"
                 "  puts __O3_BIT_COPY_FAILED\n"
                 "} else {\n"
@@ -854,7 +864,7 @@ _RESETTABLE_RUNS = frozenset({"synth_1", "impl_1"})
 async def pl_reset_run(bridge, *, run_name, force=None) -> dict:
     """Reset a synthesis/implementation run so a failed stage can be retried.
 
-    Vivado Tcl: `reset_run {run_name}` (add `-force` when `force` is set).
+    Vivado Tcl: `reset_run {run_name}`.
     A failed `launch_runs synth_1`/`impl_1` leaves the run in a non-Complete
     state; re-issuing `launch_runs` alone is refused ("run already exists /
     not reset"), so this is the prerequisite that lets a FAILED stage be
@@ -864,6 +874,14 @@ async def pl_reset_run(bridge, *, run_name, force=None) -> dict:
     `run_name` must be synth_1 or impl_1 (the two runs the PL bridge creates);
     anything else fails closed with INVALID_ARGUMENT. Fail-closed: a bridge
     error or a non-Complete reset output is reported, never a silent success.
+
+    B12 fix round #4: Vivado `reset_run` takes NO `-force` option (the command
+    reference documents only `reset_run <run>`); forwarding `-force` makes
+    Vivado fail with "Unknown option '-force'" and the reset never happens.
+    The `force` parameter is accepted for API compatibility (callers of the
+    schema may pass it) but is deliberately NOT forwarded — a reset_run is
+    unconditionally a valid reset. This is a no-op-if-true parameter, never an
+    illegal option on the wire.
     """
     if not isinstance(run_name, str) or not run_name.strip():
         return _invalid("run_name must be a non-empty string")
@@ -877,12 +895,13 @@ async def pl_reset_run(bridge, *, run_name, force=None) -> dict:
                      "supported": sorted(_RESETTABLE_RUNS)}).to_dict()
     if force is not None and not isinstance(force, bool):
         return _invalid("force must be a bool")
-    flag = " -force" if force else ""
+    # reset_run has no -force; never forward the flag. Use a clean Tcl that
+    # only requires the run to exist (guarded) and reports the reset result.
     tcl = (
         f"if {{![llength [get_runs -quiet {name}]]}} {{\n"
         f"  puts \"ERROR: run {name} does not exist\"\n"
         f"}} else {{\n"
-        f"  if {{[catch {{reset_run{flag} {name}}} __rs_err]}} "
+        f"  if {{[catch {{reset_run {{{name}}}}} __rs_err]}} "
         f"{{ puts \"ERROR: $__rs_err\" }}\n"
         f"  else {{\n"
         f"    set __rs_status [get_property STATUS [get_runs {name}]]\n"

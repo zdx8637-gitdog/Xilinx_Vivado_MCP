@@ -442,16 +442,24 @@ class TestToolBehaviors:
         assert out["status"] == "success"
         assert out["data"]["run_name"] == "synth_1"
         assert out["data"]["reset"] is True
-        assert "reset_run synth_1" in bridge.calls[-1][0]
+        assert "reset_run {synth_1}" in bridge.calls[-1][0]
         # the run existence check is fail-closed (guards get_runs first).
         assert "get_runs -quiet synth_1" in bridge.calls[-1][0]
 
     @pytest.mark.asyncio
     async def test_reset_run_force_flag(self):
+        """B12 fix #4: Vivado `reset_run` takes NO `-force` option; forwarding
+        it makes Vivado fail with "Unknown option '-force'" and the reset never
+        happens. `force` is accepted for API compatibility but must never be
+        emitted on the Tcl line."""
         bridge = _FakeVivadoBridge(response={
             "status": "success", "data": "RESET_STATUS=reset"})
         await pl_reset_run(bridge, run_name="impl_1", force=True)
-        assert "reset_run -force impl_1" in bridge.calls[-1][0]
+        tcl = bridge.calls[-1][0]
+        assert "reset_run" in tcl
+        assert "-force" not in tcl, \
+            "reset_run must not forward the invalid -force option"
+        assert "reset_run {impl_1}" in tcl
 
     @pytest.mark.asyncio
     async def test_reset_run_rejects_unknown_run(self):
@@ -775,6 +783,75 @@ class TestAsyncMode:
         assert result["status"] == "error"
         assert result["error"]["details"]["reason_code"] == \
             "BITSTREAM_NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_bitstream_observer_skips_copy_when_source_equals_target(
+            self, tmp_path):
+        """B12 fix #4 (D2): when the caller's requested output path IS the run's
+        own bit file (source == target), `file copy X X` would fail (Windows
+        cannot copy a file onto itself) and surface as BITSTREAM_NOT_FOUND. The
+        copy_tcl must detect the same-file case and SKIP the copy (the source
+        already IS the publication path), then still verify the file exists."""
+        seen = {}
+
+        class _ObserverBridge:
+            def set_current_step(self, step):
+                self.step = step
+
+            async def run_vivado_run(self, **kwargs):
+                return {"status": "success", "data": {}}
+
+            async def eval(self, tcl, timeout_s=None):
+                seen["copy_tcl"] = tcl
+                # the run's own bit file IS the requested output (same path).
+                return {"status": "success", "data": "BIT_DONE"}
+
+        output = tmp_path / "bitstream" / "gpio.bit"
+        # the target file must exist on disk (it is the run's own published bit).
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"bit")
+        result = await pl_generate_bitstream(
+            _ObserverBridge(), path=str(output), force=True)
+
+        assert result["status"] == "success", result
+        tcl = seen["copy_tcl"]
+        # the same-file safeguard is present (normalise comparison), and the
+        # plain copy path is gated behind the not-same-file branch (not a bare
+        # unconditional `file copy` that would self-copy-fail).
+        assert "file normalize" in tcl
+        assert "[file normalize $__o3_bit]" in tcl
+        # the source==target branch reports BIT_DONE without a copy.
+        assert tcl.index("file copy") > tcl.index("[file normalize $__o3_bit]")
+
+    @pytest.mark.asyncio
+    async def test_bitstream_observer_copies_distinct_source(self, tmp_path):
+        """Source != target must still copy, and verify the requested path was
+        published (the copy branch produces BIT_DONE and the file lands)."""
+        seen = {}
+
+        class _ObserverBridge:
+            def set_current_step(self, step):
+                self.step = step
+
+            async def run_vivado_run(self, **kwargs):
+                return {"status": "success", "data": {}}
+
+            async def eval(self, tcl, timeout_s=None):
+                seen["copy_tcl"] = tcl
+                # simulate Vivado publishing the requested path.
+                # (the mock does not execute Tcl; the caller checks isfile)
+                return {"status": "success", "data": "BIT_DONE"}
+
+        output = tmp_path / "bitstream" / "gpio.bit"
+        result = await pl_generate_bitstream(
+            _ObserverBridge(), path=str(output), force=True)
+
+        # Without a real Tcl executor, the file is not created → fail-closed
+        # BITSTREAM_NOT_FOUND, but the copy_tcl must still carry the distinct
+        # source==target guard (no regression).
+        assert result["status"] == "error"
+        assert result["error"]["details"]["reason_code"] == "BITSTREAM_NOT_FOUND"
+        assert "file normalize" in seen["copy_tcl"]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("bad_top", ["", "a b", "a}", "a;exit", True])
