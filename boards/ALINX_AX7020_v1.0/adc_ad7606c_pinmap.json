@@ -22,7 +22,7 @@
     {"letter": "H", "signal": "WR", "j11_pin": 10, "fpga_pin": "J18", "io": "IO_L14P_T2_35", "dir": "out"},
     {"letter": "I", "signal": "CS_N", "j11_pin": 11, "fpga_pin": "L20", "io": "IO_L9N_T1_35", "dir": "out"},
     {"letter": "J", "signal": "RD/CK", "j11_pin": 12, "fpga_pin": "L19", "io": "IO_L9P_T1_35", "dir": "out"},
-    {"letter": "K", "signal": "FR_D", "j11_pin": 13, "fpga_pin": "M20", "io": "IO_L7N_T1_35", "dir": "out"},
+    {"letter": "K", "signal": "FR_D", "j11_pin": 13, "fpga_pin": "M20", "io": "IO_L7N_T1_35", "dir": "in"},
     {"letter": "L", "signal": "BUSY", "j11_pin": 14, "fpga_pin": "M19", "io": "IO_L7P_T1_35", "dir": "in"},
     {"letter": "M", "signal": "DB1", "j11_pin": 15, "fpga_pin": "K18", "io": "IO_L12N_T1_35", "dir": "in"},
     {"letter": "N", "signal": "DB0", "j11_pin": 16, "fpga_pin": "K17", "io": "IO_L12P_T1_35", "dir": "in"},
@@ -52,6 +52,7 @@
     "j11_pin37_38": "GND", "j11_pin39_40": "+3.3V (interposer marked NC - unused)"
   },
   "notes": [
+    "方向勘误（2026-08-27，用户授权）：FR_D（FRSTDATA）是 ADC 输出、FPGA 侧为输入（原 dir=out 系标注错误）；映射（引脚/信号对应）不变。",
     "Interposer letters = J10/J11 40-pin positions 1:1 (row1 +5V/GND, rows 2-18 letters, row19 GND/GND, row20 NC/NC).",
     "J2 row order maps to letter pairs directly: (A|B)=OSI1|OSI0 ... (a|b)=DB15|DB14. DB pairs are (odd|even).",
     "STBY must be HIGH for normal operation (module has internal pullup; drive 1 from FPGA is safe).",
