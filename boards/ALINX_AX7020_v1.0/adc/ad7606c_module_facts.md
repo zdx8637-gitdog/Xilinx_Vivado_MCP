@@ -55,5 +55,5 @@
 
 ## 6. 黑盒供给边界
 
-- **黑盒可见**：本事实卡 + 引脚映射 JSON + 数据手册 PDF + 板卡包 README/board_profile（即板卡包公开事实面）。
-- **黑盒禁入**（属"答案/实现参考"）：厂商 FPGA/STM32 例程（`docs/ad7606boardinformation/`）、ALINX 官方教程与工程（`docs/boardinformation/` 教程 PDF、`D:\BaiduNetdiskDownload\...` 厂商工程）、本仓库其余一切。
+- **黑盒可见**：本事实卡 + 引脚映射 JSON + 数据手册 PDF + 板卡包 README/board_profile（即板卡包公开事实面）；另（2026-08-28 用户授权）厂商 FPGA 例程 `docs/ad7606boardinformation/.../参考例程/FPGA/AD7606C_WARE.zip`（凌智 AD7606C MODE0）开放参考。
+- **黑盒禁入**（属"答案/实现参考"）：白盒报告与工作区、ALINX 官方教程与工程（`docs/boardinformation/` 教程 PDF、`D:\BaiduNetdiskDownload\...` 厂商工程）、STM32 例程、本仓库其余一切。

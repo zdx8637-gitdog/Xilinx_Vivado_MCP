@@ -9,13 +9,14 @@
 |---|---|
 | 需求文档（v2，定稿） | `docs/development/tests/B12_a2_requirement_draft.md` |
 | 板卡包公开事实面 | `boards/ALINX_AX7020_v1.0/`（README/board_profile/adc/ 事实卡+数据手册+引脚 JSON） |
+| 厂商 FPGA 例程（2026-08-28 用户授权开放参考） | `docs/ad7606boardinformation/.../参考例程/FPGA/AD7606C_WARE.zip`（凌智 AD7606C 硬件模式 MODE0 例程） |
 | 泛化 Skill | `skills/zynq_dev/`（SKILL.md + phases 0–8） |
 | 公开 MCP | 105 工具（`python -m mcps.zynq_mcp.server`，stdio） |
 
 ## 2. 黑盒禁入（硬性）
 
 - 白盒报告与工作区（`docs/development/tests/B12_a2_whitebox*`、`workspaces/b12_a2_agent1c_*`）；
-- 厂商例程/教程、本仓库其余一切、三个 legacy 目录；
+- 厂商例程/教程（除 §1 已授权开放的 AD7606C_WARE FPGA 例程外）、本仓库其余一切、三个 legacy 目录；
 - 盲测答案（通道号/频率）——**只存在于用户手中**，智能体必须从真板采集数据自行测定。
 
 ## 3. 执行面
