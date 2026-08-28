@@ -131,6 +131,36 @@ def test_skill_pl_build_chain_is_complete_public_mcp_chain() -> None:
     assert 'artifact_state == "PUBLISHED"' in appendix
 
 
+def test_skill_mandatory_interface_timing_simulation_step() -> None:
+    """B12 fix round #5: the PL flow must require an interface-timing simulation
+    (data-sheet-level behaviour model + self-checking testbench through the four
+    public sim tools) BEFORE pl_generate_bitstream — STA only proves internal
+    timing, not the external peripheral interface timing."""
+    phase5 = _documents()["phases/5_domain_implementation.md"]
+    sim_sequence = (
+        "pl_compile_sim",
+        "pl_elaborate_sim",
+        "pl_run_simulation",
+        "pl_parse_sim_log",
+    )
+    # the forced step is present in phase5 and placed with the mandatory marker.
+    assert "对外接口时序仿真验证" in phase5
+    assert "强制步骤" in phase5
+    assert "pl_analyze_timing" in phase5
+    assert "pl_generate_bitstream" in phase5
+    # the four public sim tools appear in the phase5 sequence.
+    assert all(name in phase5 for name in sim_sequence)
+    # the reason (STA only proves internal timing) is documented.
+    assert "内部" in phase5 and "对外" in phase5
+    # the four public sim tools are all registered in the MCP capability set.
+    public_names = {tool.name for tool in CONTROL_TOOLS + DOMAIN_TOOLS}
+    assert set(sim_sequence) <= public_names
+
+    # appendix one-liner carries the same public tool sequence.
+    appendix = _documents()["appendix_mechanics.md"]
+    assert all(name in appendix for name in sim_sequence)
+
+
 def test_skill_ps_compile_is_product_owned_with_manifest_gate() -> None:
     appendix = _documents()["appendix_mechanics.md"]
     assert "`ps_compile` 是唯一正式编译入口" in appendix

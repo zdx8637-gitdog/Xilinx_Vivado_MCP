@@ -156,6 +156,11 @@ validate 报真实告警、PS 域无法寻址；未外部化的端口不会出�
 SHA256 已验证、timing 前置证据通过、约束被发现并交叉引用、Manifest 自动发布
 且合法时才 `SUCCEEDED`。禁止把「bit 文件存在」当作成功，禁止手工补 Manifest。
 
+> **接口时序仿真工具要点**：对外设接口时序验证按公开 MCP 顺序
+> `pl_compile_sim`（xvlog 编译 RTL/testbench）→ `pl_elaborate_sim`（xelab 细化）
+> → `pl_run_simulation`（xsim 运行）→ `pl_parse_sim_log`（解析日志取
+> PASS/FAIL 机读结论）；同 phase5 强制步骤，仿真 PASS 前不得 `pl_generate_bitstream`。
+
 ## 5. PS 软件链
 
 所有 `ps_*` 调用显式传 `session_id`。
