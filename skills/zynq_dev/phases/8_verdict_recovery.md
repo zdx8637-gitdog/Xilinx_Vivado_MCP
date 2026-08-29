@@ -22,6 +22,16 @@
 - verdict + 完整 UART 文本 → 保存为 `<PROJECT_PATH>/evidence/uart_result.json`；
 - 证据链：S0–S8 所有产物的路径 + SHA256 + 判定结果（Manifest 是自动发布的证据）。
 
+## 故障归因约束（Evidence-Based Fault Isolation）
+
+已由下层独立证据 PASS 的域，在没有新的反证前**不得作为首要修改对象**；
+修改范围以证据定位到的故障段（相邻 Observation Point 差值 / Event Counter
+比对结果）为边界。
+
+原因：测试工具产生的是证据；证据不仅用于 PASS/FAIL 判定，也用于**约束修改
+范围**。最终现象异常时最常见的失效模式是「到处改」——把原本正确的下层实现
+也改坏。证据的作用就是限定「允许修改哪一层代码」。
+
 ## 智能体自主决策范围
 
 - 判定执行、报告、恢复决策。

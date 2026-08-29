@@ -47,6 +47,53 @@ start（CPU 执行前）→ wait（markers 全部来自需求文档，`<PASS_MAR
 `<FAIL_MARKER>`）→ stop（取完整文本）。marker 纪律与 `\x00` 清理见
 [appendix_mechanics.md](../appendix_mechanics.md)「UART 捕获」。
 
+### 7e. 部署后自检阶梯（L1 → L2 → L3，门禁式）
+
+部署完成、CPU 运行后，先走自检阶梯，再进入 7c 的 marker 判定。
+
+**验证层级（WHAT）**：
+
+| 级 | 名称 | 验证命题 | 手段（按 5.4.1 原语库选） | 证据 |
+|----|------|----------|------------------------------|------|
+| L1 | Internal Verification（内部实现验证） | 在尽可能隔离外部世界的条件下，本设计自己控制的逻辑与内部连接是否正确 | Test Stimulus + Checker / KAT / Readback / 状态事件观测 / 时序测量（数据通路实例 = TPG + Pattern Checker） | POST 判定块 |
+| L2 | Integration Verification（集成/接口验证） | 本设计与外部依赖（器件/PHY/其他 FPGA/MCU/DDR/PS↔PL 域界）之间的集成是否正确 | Event Counter 测量窗口比对（预期由配置计算；数据内容不参与判定） | POST 判定块（含计数表） |
+| L3 | System Functional Verification（系统功能验证） | 最终需求行为 | 需求 marker 判定（7c 现有机制不变） | 捕获文本 + evaluate_observation |
+
+**L2 允许 N/A**：工程不存在外部握手/事务接口时 `L2=N/A`，不得为满足门禁
+硬造 L2 测试。判定支持 `PASS / FAIL / N/A`（见附录 10.4）。
+
+**测试强度（HOW HARD，Test Profile）**——按 DUT 特性与工作包络从下列 profile
+选取，不要求每类项目全做：
+
+| Profile | 行业名 | 内容 | 典型适用 |
+|---------|--------|------|----------|
+| Functional | Functional Test | 低速确定性激励，验证连接/逻辑/位约定 | 所有项目 |
+| Boundary | Boundary / Corner-case Test | 边界值/峰值条件 | 计数边界、极值配置 |
+| Throughput | Throughput Test（满带宽 = line-rate test） | 目标数据率连续运行完成校验 | 有吞吐特性的通路 |
+| Stress | Stress Test | ≥峰值速率 + burst / backpressure / overflow | 有流控/背压/溢出机制者 |
+| Soak | Soak / Endurance Test | 持续至缓冲、序号、地址多次回绕 | 有回绕结构、长时可靠性要求者 |
+
+> 注：Throughput/Soak 能**暴露** CDC 实现缺陷与速率相关偶发错误，但**不能
+> 证明不存在亚稳态**；CDC 正确性的判定依据是 CDC 架构审查 + 同步器结构 +
+> STA/CDC 分析，不归入本阶梯。
+
+**工作包络硬规则**：Profile 选择必须覆盖需求规定的工作包络（映射关系见
+5.4.5）；**禁止以"低速发送少量测试点成功"作为含吞吐特性通路的自检证据**。
+
+**测量与证据链（按适用性选取，不是所有项目都需要全部环节）**：
+`Observe/Snapshot → Check/Accounting → End-to-End Verification →
+Fault Isolation → Evidence-Based Modification Scope`；
+**涉及在途数据的计数比对时**使用：
+`Quiesce → Drain → Snapshot → Data Accounting`（配方见附录 10.3）。
+
+原则：**「上游正确」与「下游正确」是两个独立命题**，各自必须有自己的证据；
+L3 现象异常时按 L1→L2 证据定位，禁止用 L3 现象反推 L1/L2 结论。
+
+- L1/L2（适用者）通过是进入 L3 的前置条件；失败时按「失败恢复入口」+ S8
+  分类诊断，并用相邻 Observation Point 差值定位故障段。
+- L1 不必等到上板才做：PL 侧模拟（附录 4 仿真链）先行；上板 L1 是最终门禁。
+- L1/L2 判定块文本随 7c 捕获一并归档至 `<PROJECT_PATH>/evidence/`。
+
 ### 7d. 收尾清理（决策点：目标最终状态必须确认，不设固定动作）
 
 观测与判定完成后的收尾顺序：`ps_stop_uart_capture` → `ps_disconnect_hw_server`

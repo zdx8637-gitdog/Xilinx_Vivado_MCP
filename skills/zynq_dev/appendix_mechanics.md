@@ -276,3 +276,120 @@ ELF 存在但 Manifest 门禁失败仍是失败（`artifact_state == "PUBLISHED"
   `ps_reconnect_target`（断开重连）、`ps_recover_target`（自动 cascade：
   halt → reset → ps7_init → verify）；
 - 重跑：重新 `create_session` 必须使用**新的** `<PROJECT_PATH>` 目录。
+
+## 10. 自验证配方（Test Stimulus / Event Counter / Pattern Checker / POST）
+
+### 10.1 TPG 图案配方（数据通路 Test Stimulus）
+
+| 模式 | 内容 | 能定位的错误 |
+|------|------|-------------|
+| 常数轮转 | N 个互异常量按位置轮转（`模式值 = <常量表>[位置 mod N]`） | 位置错位、整段重复/缺失 |
+| 地址/序号标记 | `模式值 = 自身位置标识` | 地址错位、跨段串扰、读错位置 |
+| 全 0 / 全 1 | 固定常值 | stuck-at、固定位错误 |
+| walking-1 / walking-0 | 单比特行走（`0001→0010→0100→1000→…` 及反相） | 位道错接、位交换、宽度不匹配 |
+| PRBS | LFSR + 种子，收端同种子重生成比对 | 随机位错误、间歇错误 |
+
+选择指引：先常数轮转定位「段级」，再地址/序号标记定位「位置级」；位级用
+全 0/全 1 与 walking 系列；随机性错误才上 PRBS。**禁止只用全 0 / 全 1**
+（对位交换与位置错位无鉴别力）。常量互异且与真实数据可区分。
+
+### 10.2 Event Counter 测量窗口
+
+```
+寄存器组： <事件>_CNT + <事件>_SNAP（影子锁存）+ OVERFLOW_STICKY
+流程：     CLEAR → ARM → RUN → SNAPSHOT → READ
+中止：     STOP / DISARM（可选）
+```
+
+- READ 只读影子寄存器；OVERFLOW_STICKY 置位即本轮 FAIL（或加宽位宽重跑）；
+- 跨时钟域计数一律以 SNAPSHOT 为准；
+- **端到端计数比对**（含排空）不属于本窗口，见 10.3。
+
+预期关系模板（由 PS 侧 POST 按配置计算，RTL 不写死）：
+
+| 关系类型 | 示例形态（占位符） | 判定 |
+|----------|-------------------|------|
+| 1:1 型 | `<发出事件>_CNT == <收到事件>_CNT` | 相等 |
+| 周期型 | 每 `<周期>` 恰 `<K>` 次 | 整除余数校验 |
+| 沿型 | 每次 `<发出事件>` 恰 1 个 `<事件沿>` | 逐事件核对 |
+
+### 10.3 Pattern Checker + Observation Point 配方
+
+```
+测试模式流量： 逻辑记录 { SEQ, PATTERN, CHECK }
+              物理编码不得改变被测通路位宽/握手/流控
+最小扰动推荐： TPG = f(seq)（只传 PATTERN）；收端 expected = f(local_seq)
+可选：         sideband 通道携带元数据（不改 payload）
+正常模式流量： <REAL_DATA> 原样通过
+```
+
+```
+Pattern Checker 结果：
+  恒有效： { total, mismatch_count, first_bad_index }
+  条件字段： { last_seq, seq_gap_count, first_bad_seq }
+            仅当 SEQ 显式传输 / PATTERN 可无歧义反推 SEQ /
+            checker 带明确 resynchronization 时有效
+```
+
+```
+Observation Point：
+  基础字段： { count, unit, overflow_sticky }
+             + 按需 { state, status, error_flags, timestamp,
+                      latency, period, occupancy }
+  测试字段： { mismatch_count, first_bad_index }
+             + 条件字段 { last_seq, seq_gap_count, first_bad_seq }
+```
+
+```
+Data Accounting（守恒比对）： 相邻 OP 按 unit + 通路契约的守恒关系比较
+                              （如 1 SAMPLE = 2 BYTE）；仅 1:1 段要求 count 相等
+
+排空后比对（Drain-before-check）： STOP_SOURCE → QUIESCE/DRAIN → SNAPSHOT
+  相邻 OP 计数差必须满足其一，否则不得判 FAIL：
+    1. 通路已 quiescent / drained（守恒关系下差为 0）；
+    2. 差值由可观测 occupancy / in-flight 完全解释。
+
+逐段隔离： 故障段 = 守恒关系下相邻 OP 差值非零（或 first_bad_index 首次
+           出现的 OP 对）
+```
+
+- Pattern Checker 判定：`mismatch_count == 0`；校验算法任选（checksum/CRC）；
+- `<SEQ>` 位宽满足通路最大在途数据量（防回绕歧义）；允许有界回绕并在判定
+  时校验。
+
+### 10.4 POST 判定块格式（机读，KV 文本，支持 N/A）
+
+```
+SELFTEST BEGIN RUN=<N> BUILD=<SYSTEM_BUILD_ID> PL=<BITSTREAM_ID> PS=<ELF_ID>
+SELFTEST L1 RUN=<N> STEP=<步骤名> RESULT=PASS|FAIL|N/A <数字字段>
+SELFTEST L2 RUN=<N> STEP=<步骤名> RESULT=PASS|FAIL|N/A <数字字段>
+SELFTEST DONE RUN=<N> L1=PASS|FAIL|N/A L2=PASS|FAIL|N/A
+```
+
+- `<RUN>` 每次自检递增；`<SYSTEM_BUILD_ID>` 由 Platform（XSA）+ bitstream +
+  ELF 的 artifact manifest 共同生成；`<BITSTREAM_ID>`/`<ELF_ID>` 为该次构建
+  产物标识（Manifest revision / SHA256 短码）；
+- `N/A` 仅用于「工程不存在该层级适用对象」（如无外部握手接口的 L2），
+  不得以 N/A 掩盖适用但未执行的测试；
+- `<数字字段>` = 该步判定数字（`MISMATCH=0 TOTAL=<N>`、`EVENT=<名>
+  EXPECT=<M> GOT=<N>`、`OP0_COUNT=<N> OP1_COUNT=<N> UNIT=<单位>`）；
+- 判定以 `SELFTEST DONE` 行为准；单步 FAIL 必须体现在汇总行；
+- 保持 KV 文本格式（不引入 JSON），便于 UART 逐行解析。
+
+### 10.5 自检证据归档
+
+POST 判定块文本随 7c 捕获一并保存；`evaluate_observation` 的 PASS 判据
+（需求 marker）与 L1/L2 判定块互为独立证据，缺一不可。
+
+## 11. 行业依据（测试理念出处）
+
+本框架测试纪律是以下思想的**借鉴与工程化合并**，不是任何标准的符合性实现：
+
+| 理念 | 行业出处 |
+|------|----------|
+| 测试能力是设计交付物 | DFT / BIST 思想：[DFT & BIST 课程](https://smtnet.com/training/index.cfm?fuseaction=view_event&event_id=461&company_id=50816) |
+| 内部确定性测试源 + 汇端校验 | PRBS 图案生成/检查：[Xilinx 7 系列 GT 收发器手册](https://manualzz.com/doc/o/kus2n/xilinx-7-series-user-manual-83-h0_0011_07fe#14)；[LiteX Memory Testing and BIST](https://deepwiki.com/enjoy-digital/litex/7.2-uart-and-serial-communication) |
+| 事件计数监视（不看数据内容） | [AMBA AXI Performance Monitor IP](https://semiiphub.com/ip/datasheet/amba-axi-performance-monitor-7051)；[RMON 计数器](https://manual.yamaha.com/network/switches/swx2310p/td/en/Rev.2.02.31/oam_oam_rmon.html) |
+| 内嵌仪器标准化（借鉴思想） | [IEEE 1687-2014（IJTAG）](https://standards.ieee.org/ieee/1687/10896/)；[系统级 DFT 指南](https://www.jtag.com/system-dft-guidelines-boundary-scan-at-system-level/) |
+| 片上自检工程范例 | [OpenTitan DV 方法论](https://opensecura.googlesource.com/3p/lowrisc/opentitan/+show/9cae6d97d933f648fc7545dec65c7a25dc1f1a03/doc/ug/dv_methodology/index.md) |
+| 测试分层与上电自检 | [嵌入式测试指南](https://theembeddedkit.io/wp-content/uploads/2024/11/Embedded-testing-essential-guide-by-The-Embedded-Kit.pdf)；[FPGA 板级 bring-up 实例](https://github.com/heisaman/PLFM_RADAR/blob/main/docs/bring-up.html) |

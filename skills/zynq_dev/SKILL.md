@@ -49,9 +49,9 @@
 | S2 | 带宽/资源预算 | 按需求指标换算带宽预算、对照板卡 PL 资源上限做占用预估 |
 | S3 | 架构选型 | 全部工程决策：拓扑、时钟域、数据通路、地址规划、中断 vs 轮询 |
 | S4 | 方案提案 | 给用户的取舍提案（档位/判据线/推荐项），用户拍板 |
-| S5 | 分域实现 | Platform BD/XSA/Manifest → PL 构建/bitstream/Manifest → PS 软件/ELF/Manifest |
+| S5 | 分域实现 | Platform BD/XSA/Manifest → PL 构建/bitstream/Manifest → PS 软件/ELF/Manifest；**PL/PS 实现须按「测试设施与故障模型对应」内嵌自验证设施（Test Stimulus / Checker / Counter / Observation Point / POST，见 phases/5.4）** |
 | S6 | 一致性验证 | `verify_consistency` 跨域校验（revision/板卡/地址/产物 SHA256） |
-| S7 | 部署观测 | JTAG 8 步部署 + UART 捕获（marker 来自需求文档） |
+| S7 | 部署观测 | JTAG 8 步部署 + **自检阶梯 L1→L2（见 phases/7e）** + UART 捕获（marker 来自需求文档） |
 | S8 | 判定/恢复 | `evaluate_observation` 机读判定 + 证据归档 + 诊断恢复 |
 
 **严格串行。** 每个阶段成功后才进入下一个。阶段之间通过 MCP **自动发布的
@@ -133,6 +133,32 @@ Ledger 返回的真实 backend observation 和 `recommended_action` 为准。
 - 磁盘上存在孤立的产物文件不能代替终态和 Manifest；
 - fail-closed：无法确认真实状态时返回明确错误并停止，不推断成功、不推断
   运行中、不推断已释放。
+
+## 可测性纪律（自验证硬规则）
+
+测试能力是交付设计的一部分（借鉴行业 DFT/BIST 思想）。测试设施按故障模型
+对应安装，不为模板而存在。通用设施五类：
+
+1. **POST**——所有工程强制：PS 侧自检命令，输出带构建标识的机读判定块
+   （POST 是统一自检入口与结果接口，不强制复杂自检设施；最简形态 = 寄存器
+   回读等最小自检 + 判定块即可）；
+2. **Test Stimulus**——凡需隔离外部世界验证的部件强制（数据通路实例 = TPG）；
+3. **Checker**——凡 Test Stimulus 存在处必有对应判定（数据通路实例 =
+   Pattern/Sequence Checker；算法模块实例 = Known-Answer Test）；
+4. **Counter / Observation Point**——凡关键边界（外部握手、数据通路、域界、
+   IP 集成边界）按需放置；计数类用 Event Counter，综合类用 Observation Point；
+5. **验证层级门禁**——L1（Internal Verification）→ L2（Integration
+   Verification，可 N/A）→ L3（System Functional Verification），见 phases/7e。
+
+**术语与命名原则**：优先使用业界术语（中英双写）；只有不存在清晰行业术语时
+才定义项目内术语；禁止为已有测试方法自造缩写（自造缩写降低理解命中率，且易
+与既有术语冲突）。
+
+强制规则、门禁与配方见 [phases/5_domain_implementation.md](phases/5_domain_implementation.md)
+「5.4」、[phases/7_deployment_observation.md](phases/7_deployment_observation.md)
+「7e」、[phases/8_verdict_recovery.md](phases/8_verdict_recovery.md)
+「故障归因约束」、[appendix_mechanics.md](appendix_mechanics.md)
+「10. 自验证配方」「11. 行业依据」。
 
 ## 会话恢复（对话丢失恢复）
 
