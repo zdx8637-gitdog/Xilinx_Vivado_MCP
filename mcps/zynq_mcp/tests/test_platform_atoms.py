@@ -806,11 +806,19 @@ class TestGenerateWrapper:
 
 
 class TestExportHardware:
+    @staticmethod
+    def _dummy_xsa(path):
+        # Vivado always emits a zip; B13-M3 normalization expects one.
+        import zipfile as _z
+        with _z.ZipFile(path, "w", _z.ZIP_DEFLATED) as z:
+            info = _z.ZipInfo("design.hwh", date_time=(2023, 1, 1, 0, 0, 0))
+            z.writestr(info, b"hwh")
+
     @pytest.mark.asyncio
     async def test_exports_to_default_path(self, tmp_path):
         proj = tmp_path / "proj"
         proj.mkdir()
-        (proj / "platform.xsa").write_bytes(b"\x78\x73\x61")
+        self._dummy_xsa(proj / "platform.xsa")
         adapter = _FakeAdapter()
         out = await platform_export_hardware(adapter, project_path=str(proj))
         assert out["status"] == "success"
@@ -824,7 +832,7 @@ class TestExportHardware:
     async def test_exports_to_explicit_path(self, tmp_path):
         xsa = tmp_path / "out" / "hw.xsa"
         xsa.parent.mkdir()
-        xsa.write_bytes(b"x")
+        self._dummy_xsa(xsa)
         adapter = _FakeAdapter()
         out = await platform_export_hardware(adapter, path=str(xsa))
         assert out["data"]["xsa_path"] == str(xsa)

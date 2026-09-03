@@ -846,6 +846,11 @@ async def platform_export_hardware(adapter, *, path: str | None = None,
         raise XsaExportError(str(e))
     if not os.path.isfile(out_path):
         raise XsaExportError("XSA file not created")
+    # B13-M3: deterministic normalization — content-equivalent exports must be
+    # byte-identical so the manifest revision depends on CONTENT only (the
+    # real-board manifest drift 307130c4 -> 6bf2e166 is thereby eliminated).
+    from mcps.zynq_mcp.domains.platform.xsa_normalize import normalize_xsa
+    normalize_xsa(out_path)
     return {"status": "success", "data": {
         "xsa_path": out_path,
         "xsa_sha256": _sha256_file(out_path),
