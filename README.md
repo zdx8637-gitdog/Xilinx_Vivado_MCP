@@ -1,110 +1,63 @@
-# FPGA AI Agent Project — AX7020 Zynq-7020 开发框架
+# AI Agent 驱动 Zynq-7020 开发框架（MCP + Skill）
 
-> 项目根: `D:\fpgaproject`
-> 架构: `docs/architecture_ai_zynq7020.md` v2.3.1 (FROZEN TOP-LEVEL)
-> 当前：B00–B09 COMPLETE；B10/O8 冻结包已交付（用户确认 GPIO v1 稳定基线）；**B11 ✅ COMPLETE（2026-08-16）：泛化框架黑盒验证——零外设字样 Skill + 103 工具 MCP + 6-LED 考题，白盒/阶段黑盒/终验黑盒全链路 PASS（输入冻结见 `docs/development/tests/B11_phase4_blackbox_basis.md`）**
+> 用 AI Agent（主代理）驱动 Vivado/XSim/Vitis 做 Zynq-7020（ALINX AX7020）FPGA 开发：**一个 MCP Server + 一个泛化 Skill + 一个板卡配置包**，Agent 通过 MCP 原子工具完成平台/PL/PS 全流程（建 BD、综合、实现、bitstream、裸机编译、JTAG 部署），按「三域四层 + Brick」增量构建并经白盒/黑盒验收。
+>
+> **外部使用者只需要：`mcps/`（MCP Server）+ `skills/`（泛化 Skill）+ `boards/`（板卡配置包）+ 本 README。** 其余目录为项目开发历史与验证资产（见下）。
 
-## B03 板卡配置包与环境基线
+## 迭代到什么程度（2026-09-03）
 
-| 子步骤 | 状态 |
-|--------|------|
-| 0: 权威资产盘点 | ✅ |
-| 1: Board Configuration Package 与 Schema | ✅ |
-| 2: 环境探测与诊断 | ✅ |
-| 3: 漂移与错误配置测试 | ✅ |
-| 4: B03 总门禁与冻结 | ✅ |
-| Agent2 黑盒验收 | ✅ (19/19 PASS) |
-| **B03 总体** | **✅ COMPLETE / FROZEN** |
+- **框架**：B00–B09 ✅ COMPLETE/FROZEN（统一 `zynq_mcp`、执行账本、单通道生命周期、公开 MCP 黑盒验收）；B11 ✅ COMPLETE（泛化框架黑盒验证：零外设字样 Skill + 6-LED 考题全链路 PASS）；**当前 MCP 共 105 工具**（9 control + 96 domain：platform/PL/PS 域）。Execution Observation：O1–O6 FROZEN，O7 R3 PASS。
+- **功能切片（真板）**：B12 ✅ A1（DMA 环回白盒+黑盒）/ A2（AD7606C-16 8 通道实采，盲测通道/频率/幅度三方法一致）——**B13 ✅ P0/P1/P2 COMPLETE**：TCP 高速上传核心链路（UART 指令 + TCP 25M 点整图上传 ≥2MB/s、TPG 全速门禁、ADC 三档 2k/100k/1M ±0.5% 实采 + L2 事件计数 1:1、断连重连含 RST 语义）；**P3 全链联调进行中**（上位机 GUI 已打通真板数据面，CRC 口径已钉死）。
+- **框架已知问题与加强方案**：[B13_exposed_framework_issues.md](docs/development/mcp/B13_exposed_framework_issues.md)（线性阶段机 vs 迭代开发、9 条 MCP/Skill 级问题、加强方案与分批实施路径）。
+- **协作纪律（长期）**：[subagent_communication_rules.md](docs/development/subagent_communication_rules.md)。
 
-## B04 统一 zynq_mcp 基础入口 + 执行账本 + 单通道生命周期
+## 给外部使用者：最小上手
 
-| 子步骤 | 状态 |
-|--------|------|
-| R0: 架构审计 | ✅ FROZEN |
-| R1: Skeleton + Session + Ledger + Preflight + Instance Guard | ✅ COMPLETE / FROZEN (89 tests) |
-| R2: Vivado Bridge → PL Adapter + SingleWorker + Heartbeat | ✅ COMPLETE / FROZEN (35 tests, 566 collected / 565 passed / 1 skipped) |
-| R3.0: Domain Execution Lifecycle (Command/Set/Query Runner + P9) | ✅ COMPLETE / FROZEN (36 tests, 0 warnings) |
-| R3.1-C: `pl_generate_system_top` 公开注册 | ✅ COMPLETE / FROZEN |
-| 后续 PL / PS / Verification 能力 | ✅ 已进入统一 `zynq_mcp` 集成；当前总计 101 tools |
-| **B04 总体** | **核心生命周期 COMPLETE / FROZEN** |
-
-| 文档 | 内容 |
+| 目录 | 说明 |
 |------|------|
-| [B04_pl_mcp_adapter_plan.md](docs/development/mcp/B04_pl_mcp_adapter_plan.md) | B04 实施规划 |
-| [B04_pl_mcp_adapter_test_plan.md](docs/development/tests/B04_pl_mcp_adapter_test_plan.md) | B04 测试规划 |
-| [B04_R2_completion_report.md](docs/development/mcp/B04_R2_completion_report.md) | B04 R2 完成报告 |
-| [B04_R3_implementation_plan.md](docs/development/mcp/B04_R3_implementation_plan.md) | B04 R3 PL 领域 API 实施规划 |
-| [B04_R3_test_plan.md](docs/development/tests/B04_R3_test_plan.md) | B04 R3 测试规划 |
+| `mcps/zynq_mcp/` | **唯一 MCP Server**（105 工具；`control/` 执行账本与单通道生命周期 + `adapters/` Vivado/XSCT/JTAG/UART + `domains/` platform/PL/PS）。启动：`python -m mcps.zynq_mcp.server`（stdio JSON-RPC；客户端可用 `mcp` SDK 的 `ClientSession` 接入） |
+| `mcps/common/` | 公共契约：板卡配置包/锁/Revision/Artifact/错误模型（MCP 依赖） |
+| `skills/zynq_dev/` | 泛化开发 Skill（零项目外设字样：SKILL.md + phases 0–8 + 机制附录） |
+| `boards/ALINX_AX7020_v1.0/` | **板卡配置包**（板卡唯一数据源：README/xdc/profile/ps7 preset/manifest） |
+| `vendor/drivers/`、`tools/scripts/` | 可选：USB-UART 驱动与扫描/安装脚本 |
 
-## GPIO 纵向切片当前状态
+- 测试：**从仓库根**运行 `python -m pytest mcps`（勿 cd mcps）；环境 Windows + Python 3.12 + `mcp==1.28.1`；Vivado/Vitis 2023.1。
+- 平台要求：AI Agent 会话需能调用 MCP 工具（本仓库的 Server 为外部启动的 stdio 服务；无原生挂载时可用 `mcp` SDK 写 stdio 客户端调用，见框架问题文档）。
+
+### 非核心目录（外部使用者可忽略）
+
+| 目录 | 说明 |
+|------|------|
+| `docs/` | 冻结架构 + 全部 Brick 开发记录/测试规划/技能归档（项目过程资产，体量大） |
+| `hello_fpga/`、`g9_hw_test/`、`embedded_projects/`、`validation_projects/` | 开发期参考/验证项目（Golden + 故障注入 + 黑盒材料） |
+| `workspaces/`、`.zynq_runtime*/`、`.o6_runtime*/`、`.tmp_*` | 运行态/证据目录（不入库） |
+| `PC_end_tcptest/` | B13 上位机测试程序（项目专属） |
+| `Xilinx_Vivado_MCP/`、`Xilinx_Vitis_MCP/`、`zynq_platforms/` | legacy 旧 MCP/平台（独立 Git 仓库，已被 `mcps/zynq_mcp` 取代） |
+
+## Brick 历史进度
 
 | Brick | 状态 | 说明 |
 |---|---|---|
-| B07 | ✅ SKILL CONTRACT REMEDIATED / O6 FROZEN | 逃生通道已删除；Agent1 只用 Skill + 公开 MCP 完成真实重放 |
-| B08 | ✅ WHITE-BOX HARDWARE PASS | Agent1 R6 已完成真实硬件全链路 |
-| B09 | ✅ COMPLETE（PUBLIC MCP BLACK-BOX PASS） | 全新 Agent2 仅用 Skill + 公开 MCP 完成 P1–P6；Consistency 12/12、UART 8/8、`GPIO_E2E_PASS`，边界与清理审计通过；契约勘误已关闭 |
-| B10 | ✅ COMPLETE（O8 冻结包已交付） | 用户已确认 GPIO v1 稳定基线（2026-08-14）；发布清单见 [B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；下一切片方向已由 B11 承接 |
-| B11 | ✅ COMPLETE（全六阶段闭环） | 泛化框架黑盒验证：泛化 Skill `skills/zynq_dev/`、MCP 103 工具；③真板 PASS、⑤用户确认 6 灯 1s 交替、④ Agent3 黑盒 PASS、⑥ Agent2 终验黑盒 PASS（输入冻结见 [B11_phase4_blackbox_basis.md](docs/development/tests/B11_phase4_blackbox_basis.md)）；规划见 [B11_plan.md](docs/development/mcp/B11_plan.md) |
-| B12 | ⏳ A1（DMA 环回）白盒+黑盒 PASS | 数据采集链路（AD7606C-16）：A1 白盒真板 PASS（[报告](docs/development/tests/B12_a1_whitebox_rerun_report.md)）+ 黑盒 PASS（冻结 [B12_a1_blackbox_basis.md](docs/development/tests/B12_a1_blackbox_basis.md)）；A2 低速采集 + UART 待焊接；B13 TCP 高速后置 |
+| B00–B03 | ✅ COMPLETE/FROZEN | 项目整理、执行观察 O1–O6、板卡配置包、环境基线 |
+| B04 | ✅ COMPLETE/FROZEN | 统一 `zynq_mcp`：执行账本 + 单通道生命周期 + Vivado/XSCT Adapter |
+| B05–B09 | ✅ COMPLETE/FROZEN | GPIO 纵向切片全链路（白盒/阶段黑盒/公开 MCP 黑盒 PASS） |
+| B10/B11 | ✅ COMPLETE | O8 冻结包；泛化框架黑盒验证（去 GPIO 化 Skill + 105 工具 + 6-LED 考题，全六阶段闭环） |
+| B12 | ✅ A1/A2 COMPLETE | 数据采集链路：DMA 环回白盒+黑盒；AD7606C-16 8 通道真板实采（盲测一致） |
+| **B13** | **✅ P0/P1/P2 COMPLETE；P3 联调中** | TCP 扫描上传核心链：P0 协议互测 → P1 TPG 全速门禁（PL FIFO→DMA→DDR→TCP，8.5MB/s）→ P2 ADC 三档实采 + L2 计数 → P3 上位机全链联调 |
 
-当前O1冻结基线（2026-08-12）：`ALL_TOOLS=101`；`mcps` 1264 collected；O1专项 24 passed；最终非硬件回归 1225 passed / 1 skipped / 38 deselected。另行真实入口验证 12 passed；其余26项host/device-live未在O1重复执行。
-
-公开 MCP 契约勘误及整改门禁：
-
-- [B09_public_mcp_contract_erratum.md](docs/development/tests/B09_public_mcp_contract_erratum.md)
-- [B09_execution_observation_contract.md](docs/development/mcp/B09_execution_observation_contract.md) — v1.0 COMPLETE / FROZEN
-- [B09_execution_observation_implementation_plan.md](docs/development/mcp/B09_execution_observation_implementation_plan.md) — O1–O6 COMPLETE/FROZEN；O7 R3 PASS；勘误已关闭
-- [B09_O7_R1_failure_report.md](docs/development/mcp/B09_O7_R1_failure_report.md) — O7 第一轮黑盒失败终态、证据和重验门禁
-- [B09_O7_R2_failure_report.md](docs/development/mcp/B09_O7_R2_failure_report.md) — O7 第二轮推进至 bitstream Manifest 门禁后的失败证据与整改
-- [B09_O7_R3_pass_report.md](docs/development/mcp/B09_O7_R3_pass_report.md) — O7 第三轮全公开 MCP 黑盒通过证据、边界审计与清理结果
-- [B09_O1_completion_report.md](docs/development/mcp/B09_O1_completion_report.md) — Ledger v2兼容扩展实施与分层回归证据
-- [B09_O2_implementation_report.md](docs/development/mcp/B09_O2_implementation_report.md) — O2冻结证据：统一EDA后端所有权、真实PID/PROCESS观测和回归
-- [B09_O3_implementation_report.md](docs/development/mcp/B09_O3_implementation_report.md) — O3冻结证据：Platform/PL真实Vivado STATUS观测与Manifest终态门禁
-- [B09_O4_implementation_report.md](docs/development/mcp/B09_O4_implementation_report.md) — O4冻结证据：XSCT真实PID/步骤观测、ARM ELF与PS Manifest终态门禁
-- [B09_O5_implementation_report.md](docs/development/mcp/B09_O5_implementation_report.md) — O5冻结证据：Controller-owned XSDB、JTAG lease、UART capture与真实RESOURCE观测
-- [B09_O6_completion_report.md](docs/development/mcp/B09_O6_completion_report.md) — O6冻结证据：Skill公共边界、Agent1全公开MCP真实GPIO重放与清理
-- 原 B09 硬件证据保留在 `workspaces/gpio_b09_r3_20260812/REPORT_B09_R3_Agent2.md`
-
-## 开发规划文档
-
-| 文档 | 内容 |
-|------|------|
-| [B03_completion_report.md](docs/development/mcp/B03_completion_report.md) | B03 完成报告 |
-| [B03_to_B04_handoff.md](docs/development/B03_to_B04_handoff.md) | B03→B04 交接 |
-| [B03_asset_inventory.md](docs/development/mcp/B03_asset_inventory.md) | B03 子步骤0 资产盘点 |
-
-## 入口文档
-
-| 文档 | 内容 |
-|------|------|
-| [architecture_ai_zynq7020.md](docs/architecture_ai_zynq7020.md) | 冻结的顶层架构: 三域四层 + P1-P8 |
-| [brick_development_plan.md](docs/brick_development_plan.md) | Brick 开发规划与进度 |
-| [B00_project_cleanup_plan.md](docs/development/B00_project_cleanup_plan.md) | B00 项目整理方案 (v0.3) |
-| [B00_completion_report.md](docs/development/B00_completion_report.md) | B00 执行报告 |
-
-## 核心组件
+## 核心组件（当前）
 
 | 目录 | 说明 |
 |------|------|
-| `Xilinx_Vivado_MCP/` | Vivado MCP Server (27 tools + 2 Skills), 独立 Git 仓库 |
-| `Xilinx_Vitis_MCP/` | Vitis MCP Server 骨架, 独立 Git 仓库 |
-| `zynq_platforms/` | AX7020 平台工程, 独立 Git 仓库 |
-| `docs/` | 架构文档、开发记录、厂商教程 |
-| `tools/scripts/` | 工具脚本 (UART 扫描、驱动安装) |
-| `vendor/drivers/` | 厂商驱动 (CP210x、FTDI) |
+| `mcps/zynq_mcp/` | **唯一 MCP**（105 工具，详见上）；`docs/development/mcp/B10_freeze_manifest.md` 为发布清单 |
+| `skills/zynq_dev/` | 泛化 Skill（B11 冻结）；旧 GPIO Skill 归档于 `docs/development/skill/archive/` |
+| `boards/ALINX_AX7020_v1.0/` | Board Configuration Package（板卡唯一数据源） |
+| `Xilinx_Vivado_MCP/`、`Xilinx_Vitis_MCP/`、`zynq_platforms/` | legacy/已出范围（独立 Git 历史，保留在磁盘） |
 
-## 参考设计
+## 开发规划与入口文档
 
-| 目录 | 说明 |
-|------|------|
-| `hello_fpga/` | 纯 PL Breath LED 完整项目 |
-| `g9_hw_test/` | PL 硬件闭环验证 |
-| `embedded_projects/` | PS bare-metal ARM 参考代码 |
-| `validation_projects/` | Golden + 11 故障注入 + Agent2 黑盒 |
-
-## 外部资料
-
-| 路径 | 说明 |
-|------|------|
-| `docs/boardinformation/` | ALINX 官方 6 本 PDF 教程 (~99MB) |
-| `vendor/drivers/` | CP210x/FTDI USB 驱动 |
+- 顶层架构（冻结）：[docs/architecture_ai_zynq7020.md](docs/architecture_ai_zynq7020.md) v2.3.1
+- Brick 计划与进度：[docs/brick_development_plan.md](docs/brick_development_plan.md)
+- 冻结契约（当前）：`docs/development/tests/B13_requirement_draft.md`
+- 框架问题复盘：[docs/development/mcp/B13_exposed_framework_issues.md](docs/development/mcp/B13_exposed_framework_issues.md)
+- 会话纪律速查：`docs/development/B12_a2_working_discipline.md`
