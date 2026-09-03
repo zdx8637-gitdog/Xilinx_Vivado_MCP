@@ -40,6 +40,9 @@ from mcps.zynq_mcp.control.resource_registry import resource_public_view
 from mcps.zynq_mcp.control.session import (
     create_session_mutator, close_session_mutator, handle_get_session_info,
 )
+from mcps.zynq_mcp.control.workflow import (
+    workflow_rollback_mutator, workflow_resume_mutator,
+)
 from mcps.zynq_mcp.control.capabilities import build_capabilities, ALL_TOOLS, _PS_ALLOWED_ARGS
 from mcps.zynq_mcp.domains.ps import (
     jtag_target, target_control, memory_access, target_recovery, ps_bsp,
@@ -84,7 +87,8 @@ _QUERY_TOOLS = frozenset({
     "wait_operation", "get_execution_state", "diagnose_execution",
     "verify_consistency", "evaluate_observation",
 } | PLATFORM_ATOM_QUERY_TOOL_NAMES)  # B05-R2: platform_get_status, platform_list_ips
-_COMMAND_TOOLS = frozenset({"create_session", "close_session", "recover_execution"})
+_COMMAND_TOOLS = frozenset({"create_session", "close_session", "recover_execution",
+                            "workflow_rollback", "workflow_resume_from"})
 # R3.1-C + B05 + B06 first batch (22 PS tools) + B06 second batch (11 BSP)
 # + B01 §5 Phase 5 UART capture lifecycle (3 tools)
 # + B01 §5 Phase 7 UART diagnostics (1 tool)
@@ -186,6 +190,10 @@ class ZynqDispatcher:
                 return _text(await _close_session_atomic(arguments, self))
             if tool_name == "recover_execution":
                 return _text(await _recover_execution(self))
+            if tool_name == "workflow_rollback":
+                return _text(_workflow_rollback(arguments, self))
+            if tool_name == "workflow_resume_from":
+                return _text(_workflow_resume_from(arguments, self))
             # B06: PS domain tools route to _dispatch_ps (local, bridge-based)
             if tool_name.startswith("ps_"):
                 return _text(await _dispatch_ps(arguments, tool_name, self))
@@ -246,6 +254,53 @@ def _create_session(args, disp):
     if resume_hint:
         result["resume_hint"] = resume_hint
     return success(result, context_ref=ctx["session_id"]).to_dict()
+
+
+def _workflow_rollback(args, disp):
+    sid = args.get("session_id"); target = args.get("target_stage")
+    if not isinstance(sid, str) or not isinstance(target, str) or not sid.strip() or not target.strip():
+        return error("session_id and target_stage must be non-empty strings",
+                     code="INVALID_ARGUMENT").to_dict()
+    try:
+        commit = workflow_rollback_mutator(args)
+        ledger = commit(disp._guard, disp._ledger_path)
+    except ChannelBusyError as e:
+        return error(f"Cannot rollback: {e.args[0]}", code="LOCK_BUSY",
+                     details={"reason_code": e.args[0]}).to_dict()
+    except Exception as e:
+        return error(str(e), code="INTERNAL_ERROR").to_dict()
+    disp._ledger = ledger
+    ctx = ledger.context
+    return success({"session_id": ctx["session_id"],
+                    "current_stage": ctx["current_stage"],
+                    "platform_revision": ctx.get("platform_revision"),
+                    "pl_revision": ctx.get("pl_revision"),
+                    "ps_revision": ctx.get("ps_revision"),
+                    "workflow_history": ctx.get("workflow_history"),
+                    "ledger_sequence": ledger.ledger_sequence},
+                   context_ref=ctx["session_id"]).to_dict()
+
+
+def _workflow_resume_from(args, disp):
+    sid = args.get("session_id"); target = args.get("target_stage")
+    if not isinstance(sid, str) or not isinstance(target, str) or not sid.strip() or not target.strip():
+        return error("session_id and target_stage must be non-empty strings",
+                     code="INVALID_ARGUMENT").to_dict()
+    try:
+        commit = workflow_resume_mutator(args)
+        ledger = commit(disp._guard, disp._ledger_path)
+    except ChannelBusyError as e:
+        return error(f"Cannot resume: {e.args[0]}", code="LOCK_BUSY",
+                     details={"reason_code": e.args[0]}).to_dict()
+    except Exception as e:
+        return error(str(e), code="INTERNAL_ERROR").to_dict()
+    disp._ledger = ledger
+    ctx = ledger.context
+    return success({"session_id": ctx["session_id"],
+                    "current_stage": ctx["current_stage"],
+                    "workflow_history": ctx.get("workflow_history"),
+                    "ledger_sequence": ledger.ledger_sequence},
+                   context_ref=ctx["session_id"]).to_dict()
 
 
 async def _close_session_atomic(args, disp):

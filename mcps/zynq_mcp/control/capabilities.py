@@ -28,6 +28,18 @@ CONTROL_TOOLS = [
          inputSchema={"type": "object", "properties": {}}),
     Tool(name="recover_execution", description="Attempt to recover from RECOVERY_REQUIRED to IDLE",
          inputSchema={"type": "object", "properties": {}}),
+    Tool(name="workflow_rollback", description="B13-M1: legally move the workflow stage BACK to a rollback target (e.g. PS_BUILD -> PL_BUILD after a PL defect is found), invalidating downstream artifact revisions; lane must be IDLE and no active operation",
+         inputSchema={"type": "object", "properties": {
+             "session_id": {"type": "string", "minLength": 1},
+             "target_stage": {"type": "string", "minLength": 1},
+             "reason": {"type": "string"}},
+             "required": ["session_id", "target_stage"], "additionalProperties": False}),
+    Tool(name="workflow_resume_from", description="B13-M1: validated FORWARD stage fast-forward using existing on-disk artifacts (platform manifest/XSA/wrapper must exist); replaces the close+create full re-walk when only PL/PS changed",
+         inputSchema={"type": "object", "properties": {
+             "session_id": {"type": "string", "minLength": 1},
+             "target_stage": {"type": "string", "minLength": 1},
+             "reason": {"type": "string"}},
+             "required": ["session_id", "target_stage"], "additionalProperties": False}),
 ]
 
 DOMAIN_TOOLS: list[Tool] = [

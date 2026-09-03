@@ -1087,8 +1087,9 @@ class TestRegistrationConsistency:
         # domain); was 101 with the shortcut. B11 ③.1: + assign_addresses /
         # make_external / synthesize → 103 (9 control + 94 domain). B12-N3:
         # + ps_start_hw_server → 104 (9 control + 95 domain). B12 fix round #2:
-        # + pl_reset_run → 105 (9 control + 96 domain).
-        assert len(ALL_TOOLS) == 105
+        # + pl_reset_run → 105 (9 control + 96 domain). B13-M1: workflow_rollback
+        # + workflow_resume_from → 107 (11 control + 96 domain).
+        assert len(ALL_TOOLS) == 107
 
 
 # ── _execute bridge injection (production CommandRunner path) ─────────────
