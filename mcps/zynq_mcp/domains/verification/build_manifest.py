@@ -100,9 +100,16 @@ def _resolve_artifact_path(raw, project_path: str) -> str | None:
 def _read_platform_manifest(project_path: str, prefer_revision: str | None = None):
     """Load the current Platform Manifest from manifests/platform/*.json.
 
-    Returns the dict, or None. Prefers the manifest whose platform_revision
-    matches the snapshot's current platform revision; falls back to the last
-    (sorted) manifest. Never raises.
+    Returns the dict, or None.
+
+    Resolution order (B13-M4):
+    1. The manifest whose ``xsa_sha256`` matches the platform.xsa actually on
+       disk — disk truth beats session memory, so a stale session-snapshot
+       revision can no longer select an outdated manifest (the real-board
+       verify_consistency failure: PS manifest built_from_platform_revision
+       was the old f3dcaa45 while the current export was 22b94b0f).
+    2. The snapshot's preferred revision (legacy behavior).
+    3. The last (sorted) manifest. Never raises.
     """
     d = os.path.join(project_path, "manifests", "platform")
     if not os.path.isdir(d):
@@ -120,6 +127,16 @@ def _read_platform_manifest(project_path: str, prefer_revision: str | None = Non
             manifests.append(data)
     if not manifests:
         return None
+    xsa = os.path.join(project_path, "platform.xsa")
+    if os.path.isfile(xsa):
+        try:
+            disk_sha = sha256_file(xsa)
+        except Exception:
+            disk_sha = None
+        if disk_sha:
+            for m in manifests:
+                if m.get("xsa_sha256") == disk_sha:
+                    return m
     if prefer_revision:
         for m in manifests:
             if m.get("platform_revision") == prefer_revision:

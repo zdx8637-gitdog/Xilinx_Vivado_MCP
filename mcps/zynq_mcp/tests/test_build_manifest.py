@@ -479,3 +479,32 @@ class TestRunnerHook:
             m = json.load(fh)
         assert m["manifest_type"] == "ps_build"
         assert m["elf_path"].replace("\\", "/") == "app/Debug/app.elf"
+
+
+# ── B13-M4: disk-XSA truth beats stale session revision ──────────────────────
+
+class TestDiskXsaTruth:
+    def test_stale_snapshot_revision_loses_to_disk_xsa(self, tmp_path):
+        """Real-board failure: the session snapshot still carries the OLD
+        platform revision, so the PS manifest was built from the outdated
+        platform manifest (built_from_platform_revision mismatch). With
+        B13-M4 the manifest matching the on-disk platform.xsa wins."""
+        root, snapshot, files = _ps_project(tmp_path)
+        new_rev = snapshot["platform_revision"]
+        # Simulate a stale session revision pointing at an OLD platform
+        # manifest whose xsa_sha256 does NOT match the platform.xsa on disk.
+        old_rev = "sha256:" + "33" * 32
+        _write_platform_manifest(
+            root, bp_sha=snapshot["board_profile_sha256"], rev=old_rev,
+            xsa_sha=_sha(_write(root, "old.xsa", b"old-bytes")),
+            bdw_sha="sha256:" + "44" * 32,
+            addr_map={})
+        stale_snap = dict(snapshot)
+        stale_snap["platform_revision"] = old_rev
+        result = {"status": "success", "data": {"app_name": "app", "built": True}}
+        path = publish_ps_build_manifest(stale_snap, result, root,
+                                         tool_args={"app_name": "app"})
+        assert path is not None
+        with open(path, encoding="utf-8") as fh:
+            m = json.load(fh)
+        assert m["built_from_platform_revision"] == new_rev
