@@ -48,3 +48,13 @@ Desktop.ini
 # 厂商压缩包（解压内容已入库，压缩包不入库）
 *.rar
 _tmp_pdf/
+
+# --- B13 期非核心目录（外部使用者不需要；文件留盘、不入库）---
+.tmp_agent_tools/
+.tmp_sim/
+.tmp_sim_plot.py
+.vscode/
+bitstream/
+PC_end_tcptest/
+docs/Another/
+docs/ad7606boardinformation/
