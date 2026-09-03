@@ -11,6 +11,7 @@ AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）
 - Execution Observation：O1–O6 FROZEN，O7 R3 PASS，O8 冻结包已交付（2026-08-14）
 - 根目录是新的 core Git 仓库（分支 main，839 个文件）：基线 commit `4e0d148`，tag `o7r3-baseline-20260813` 锁定 O7 R3 基线；远端 origin = https://github.com/zdx8637-gitdog/Xilinx_Vivado_MCP（旧内容已按授权覆盖替换，原旧远程 HEAD `59f2abb` 已记录）。`Xilinx_Vivado_MCP/`、`Xilinx_Vitis_MCP/`、`zynq_platforms/` 三个旧仓库为 legacy/已出范围（保留在磁盘、各自独立且已停更的 Git 历史，不被新仓库跟踪）
 - 会话纪律速查（上下文压缩后必读）：[docs/development/B12_a2_working_discipline.md](docs/development/B12_a2_working_discipline.md)——零轮询/串行执行/盲测保密/缺陷口径/当前状态
+- **子代理通讯机制（长期纪律，跨所有 Brick 必读）**：[docs/development/subagent_communication_rules.md](docs/development/subagent_communication_rules.md)——send_message 排队语义 / 方向级指令「中断+合并投递」/ 发出后必须跟进确认（不能发了就不管）/ ask_user_question 人类转述 / 队列不可删除与跳过规则
 - 下面「AI Agent 驱动 Zynq-7020 项目规则」是冻结的工作纪律，任何实现/汇报必须遵守。
 
 ## 常用命令
