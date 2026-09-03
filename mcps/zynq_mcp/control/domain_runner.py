@@ -783,15 +783,9 @@ class CommandRunner:
                 for k in _EXECUTION_SNAPSHOT_FIELDS:
                     snap[k] = ctx.get(k, "")
                 snapshot_holder["snap"] = _MappingProxyType(snap)
-                dr = ledger.dedup_registry or {}
-                existing = dr.get(sig)
-                if existing:
-                    ao = ledger.active_operation
-                    if ao and ao.get("operation_id") == existing:
-                        if ao.get("status") in OP_NON_TERMINAL: raise InFlightDuplicateError(existing)
-                        raise TerminalDuplicateError(existing)
-                    po = ledger.previous_operation
-                    if po and po.get("operation_id") == existing: raise TerminalDuplicateError(existing)
+                # B13-M5: shared P10 dedup resolution (FAILED terminals retryable)
+                from mcps.zynq_mcp.control.execution_gate import dedup_lookup
+                dedup_lookup(ledger, sig)
                 _shared_preflight_check(ledger, tool_name, session_id, resource_req)
                 ledger.execution_lane = EXECUTION_LANE_BUSY
                 accepted_at = _now_iso()

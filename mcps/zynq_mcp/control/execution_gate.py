@@ -6,12 +6,45 @@ P9 honest: Ledger resource record check only (real lock probe deferred to adapte
 import time
 from mcps.zynq_mcp.control.execution_ledger import (
     ExecutionLedger, EXECUTION_LANE_IDLE, EXECUTION_LANE_BUSY, EXECUTION_LANE_RECOVERY_REQUIRED,
-    OP_ACCEPTED, OP_NON_TERMINAL, OP_TERMINAL, OP_INTERRUPTED, OP_OUTCOME_UNKNOWN, OP_TIMED_OUT,
+    OP_ACCEPTED, OP_NON_TERMINAL, OP_TERMINAL, OP_SUCCEEDED,
+    OP_INTERRUPTED, OP_OUTCOME_UNKNOWN, OP_TIMED_OUT,
     WORKER_STATE_ABSENT, WORKER_STATE_ORPHANED, WORKER_STATE_DEAD,
     ChannelBusyError, _now_iso, operation_contract_fields,
 )
 from mcps.zynq_mcp.control.operation_service import InFlightDuplicateError, TerminalDuplicateError
 from mcps.zynq_mcp.control.process_guard import is_pid_alive, get_process_identity
+
+
+def dedup_lookup(ledger, sig):
+    """P10 shared dedup resolution (B13-M5).
+
+    Returns None when the signature may be (re-)admitted; raises
+    InFlightDuplicateError for a still-running duplicate and
+    TerminalDuplicateError ONLY when the previous attempt SUCCEEDED
+    (produced artifacts). FAILED-class terminals (FAILED/CANCELLED/TIMED_OUT/
+    INTERRUPTED/OUTCOME_UNKNOWN) produce no artifacts, so a legitimate retry
+    of the same command must NOT be blocked — the P2 real-board incident was
+    exactly that (ps_compile FAILED → same-args retry → wrongly rejected with
+    CONFIRM_RETRY_REQUIRED, forcing ledger surgery).
+    """
+    dr = ledger.dedup_registry or {}
+    existing = dr.get(sig)
+    if not existing:
+        return None
+    ao = ledger.active_operation
+    po = ledger.previous_operation
+    if ao and ao.get("operation_id") == existing:
+        if ao.get("status") in OP_NON_TERMINAL:
+            raise InFlightDuplicateError(existing)
+        if ao.get("status") == OP_SUCCEEDED:
+            raise TerminalDuplicateError(existing)
+        return None
+    if po and po.get("operation_id") == existing:
+        if po.get("status") == OP_SUCCEEDED:
+            raise TerminalDuplicateError(existing)
+        return None
+    # Stale entry (matches neither active nor previous): admit and overwrite.
+    return None
 
 
 def preflight_mutator(tool_name, arguments, session_id, board_id, project_path, op_id, signature):
@@ -23,16 +56,8 @@ def _gate(ledger, tool_name, arguments, session_id, board_id, project_path, op_i
     cur_stage = ctx.get("current_stage", "IDLE"); rev = ctx.get("board_package_revision", "")
     ao = ledger.active_operation; po = ledger.previous_operation
 
-    # ---- P10: dedup FIRST ----
-    dr = ledger.dedup_registry or {}
-    existing = dr.get(sig)
-    if existing:
-        if ao and ao.get("operation_id") == existing:
-            if ao.get("status") in OP_NON_TERMINAL:
-                raise InFlightDuplicateError(existing)
-            raise TerminalDuplicateError(existing)
-        if po and po.get("operation_id") == existing:
-            raise TerminalDuplicateError(existing)
+    # ---- P10: dedup FIRST (B13-M5: shared helper; FAILED retryable) ----
+    dedup_lookup(ledger, sig)
 
     # ---- P4: worker_generation BEFORE P1 ----
     if ao and ao.get("status") in OP_NON_TERMINAL:
