@@ -86,9 +86,22 @@ class TestRollback:
     def test_rollback_table_pl_implement_to_pl_build(self):
         assert is_valid_rollback("PL_IMPLEMENT", "PL_BUILD") is True
 
+    def test_rollback_table_pl_generate_to_platform_design(self):
+        # B13-F3 修复轮#7: PL_GENERATE（export_manifest 后）必须能回
+        # PLATFORM_DESIGN 改 BD——白盒实证缺口（被迫 close+create ×3）。
+        assert is_valid_rollback("PL_GENERATE", "PLATFORM_DESIGN") is True
+        assert is_valid_rollback("PL_GENERATE", "PL_BUILD") is False
+
+    def test_rollback_table_platform_design_from_any_build_stage(self):
+        # F3 同类缺口一并补齐: 所有 PL_GENERATE 之后的阶段都可回平台级。
+        for stage in ("PL_BUILD", "PL_IMPLEMENT", "PL_TIMING",
+                      "PL_BITSTREAM", "PS_BUILD", "CONSISTENCY_CHECK"):
+            assert is_valid_rollback(stage, "PLATFORM_DESIGN") is True, stage
+
     def test_rollback_table_forward_target_rejected(self):
         assert is_valid_rollback("PS_BUILD", "OBSERVATION") is False
-        assert is_valid_rollback("PS_BUILD", "PLATFORM_DESIGN") is False
+        # 平台阶段自身无回退目标（只能 retry 同阶段）
+        assert is_valid_rollback("PLATFORM_DESIGN", "PL_GENERATE") is False
 
     def test_rollback_moves_stage_and_invalidates_revisions(self, session):
         l, g, lp, proj = session
@@ -113,6 +126,23 @@ class TestRollback:
             {"session_id": sid, "target_stage": "PS_BUILD"})(g, lp)
         assert l2.context["current_stage"] == "PS_BUILD"
         assert l2.context["ps_revision"] is None  # re-run will re-derive it
+
+    def test_rollback_pl_generate_to_platform_design(self, session):
+        # B13-F3: 平台级迭代环——从 PL_GENERATE 回 PLATFORM_DESIGN 必须
+        # 合法且把平台/PL/PS revision 全部失效（BD 重改后全链重建）。
+        l, g, lp, proj = session
+        sid = l.context["session_id"]
+        _set_stage(g, lp, "PL_GENERATE")
+        l2 = workflow_rollback_mutator(
+            {"session_id": sid, "target_stage": "PLATFORM_DESIGN",
+             "reason": "BD needs a rewire (F5-class fix)"})(g, lp)
+        assert l2.context["current_stage"] == "PLATFORM_DESIGN"
+        assert l2.context["platform_revision"] is None
+        assert l2.context["pl_revision"] is None
+        assert l2.context["ps_revision"] is None
+        hist = l2.context.get("workflow_history") or []
+        assert hist and hist[-1]["from"] == "PL_GENERATE" \
+            and hist[-1]["to"] == "PLATFORM_DESIGN"
 
     def test_rollback_invalid_target_refused(self, session):
         l, g, lp, proj = session

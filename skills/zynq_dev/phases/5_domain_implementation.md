@@ -42,15 +42,24 @@ wrapper + top；constraints；top 由方案决定）→ `pl_generate_target` →
 >    （不报错、时序通过但行为错误）。任一此类警告都必须先定位到具体
 >    端口/信号并确认无数据冲突，才允许继续下一阶段；无法确认时视为失败。
 
-> **对外接口时序仿真验证（强制步骤，放在 `pl_analyze_timing` 之后、
-> `pl_generate_bitstream` 之前；缺失即不得进入位流生成与上板）：**
+> **对外接口时序仿真验证（强制步骤；B13-F7a/F7b 修订：仿真在独立会话执行，
+> 不得插在 `pl_analyze_timing` 与 `pl_generate_bitstream` 之间）：**
 >
 > 若设计含对外设接口的时序要求（如外部器件/存储器的控制/数据时序），必须：
 > 1. 先编写**数据手册级行为模型**与**自检 testbench**（含接口时序断言——如
 >    `<触发信号>/<忙信号>/<片选>/<读脉冲>` 的建立/保持、采样窗口、通道数据
 >    对照等）。
 > 2. 经公开 MCP `pl_compile_sim → pl_elaborate_sim → pl_run_simulation →
->    pl_parse_sim_log` 完成仿真，**PASS 后才允许继续位流生成与上板**。
+>    pl_parse_sim_log` 完成仿真，**PASS 后才允许上板**。
+> 3. **执行位置与顺序（F7 修订，真板实证）**：
+>    - 仿真后端与 PL 构建会话**互斥**（`ADAPTER_NOT_READY: Direct EDA
+>      backend already active`）——仿真必须**另开独立会话**执行；
+>    - 位流生成门禁要求 `pl_generate_bitstream` 的**直接前序**是
+>      SUCCEEDED 的 `pl_analyze_timing`（相邻性）——仿真**不得插入**
+>      analyze_timing 与 bitstream 之间，否则位流报
+>      `STAGE_PREREQUISITE_UNMET` 且该阶段 analyze_timing 不可重跑（死锁）；
+>    - 因此时序链保持 `analyze_timing → bitstream` **紧邻**；仿真在独立
+>      会话中于综合前（RTL/引擎级）或位流后（接口级复核）完成并留机读证据。
 >
 > 原因：`pl_analyze_timing`（STA）只验证 FPGA **内部**时序，**不验证对外设接口
 > 时序**。接口时序错误（如控制信号建立/保持、通道数据错位）在时序报告中

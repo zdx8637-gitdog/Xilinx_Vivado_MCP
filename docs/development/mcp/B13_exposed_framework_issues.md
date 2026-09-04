@@ -95,3 +95,14 @@
 - ②③ 端口/引脚属性 → `platform_set_bd_object_property`：对象类型自动识别 port→pin→intf-pin。真实 Vivado 实测：`CONFIG.FREQ_HZ` 端口/引脚可写可回读；**ASSOCIATED_BUSIF 真实家在 IP 时钟引脚（bd_ports 上不存在，BD 41-1642）**；axi_interconnect `S00_AXI DATA_WIDTH` 只读（CRITICAL WARNING + 空回读 → 原子 fail-closed）。
 - ④ make_external 派生名 → 用 `get_bd_intf_ports -of_objects [get_bd_intf_nets -of_objects <pin>]` 实采（pin 直查匹配为空，BD 5-233）；真实 Vivado 实测 axi_gpio_0/S_AXI→S_AXI_0、axi_gpio_1/S_AXI→S_AXI_1，pin 基名猜测必错。
 - S1–S4 → skills/zynq_dev：5_domain_implementation（S1 修复必配回归 + S2 综合 CRITICAL=0 门禁/仿真 X 检查）、7_deployment_observation（S4 双端字节级 KAT 对拍）、appendix_mechanics（S3 §12 AXI 握手缺陷模式库）。
+
+## 六、白盒实测反馈与修复轮#7（B13-P4 白盒，2026-09-04）
+
+P4 白盒（新工作区 agent1_p4_20260904）在真板全链开发中实测升级后框架，提交发现 F1–F8（见该工作区 `evidence/FINDINGS.md`）。主代理逐项代码级复核结论：
+
+- **F1（修复轮#6 引入的真缺陷，P1）**：`platform_package_user_ip` 注册段与 `platform_set_bd_object_property` 用顶层 `.get("output")` 解析 `_run_tcl` 响应，而输出在 `data` 层 → 两原子恒报 FAILED（写入实际生效）。根因 = 单元测试 fake 用了错误响应形状。修复轮#7：改 `_tcl_output(res)` + 测试 fake 对齐真实契约形状。
+- **F6（修复轮#3 覆盖不足，P1）**：`normalize_xsa` 只归一 zip 层，`xsa.json` generatedTimestamp 与 `xsa.xml` GenAppInfo/@TimeStamp 为成员内容、每次导出变化 → M3 不成立。修复轮#7：成员内容归一 + 用白盒三件真实 XSA 实测归一后字节一致（9cad51cb… ×3）。
+- **F3（修复轮#1 覆盖缺口，P1）**：ROLLBACK_TARGETS 无 PL_GENERATE→PLATFORM_DESIGN → 平台级迭代被迫 close+create ×3。修复轮#7：补平台级回退目标（PL_GENERATE/PL_BUILD/PL_IMPLEMENT/PL_TIMING/PL_BITSTREAM/PS_BUILD/CONSISTENCY_CHECK 均可回 PLATFORM_DESIGN）。
+- **F7b（Skill 冲突）**：Skill 5.2 仿真顺序与位流门禁相邻性冲突 → 修复轮#7 更新 5.2（仿真独立会话、analyze_timing→bitstream 紧邻）。
+- **F2/F4/F5**：fail-closed 行为正确 / Vivado 推断限制，原子 docstring 补注（F4 建议 RTL 暴露 `<BUSIF>_ACLK` 命名端口；F5 外部 AXI 接口端口无原子级解、产品侧内部连线）。
+- **F7a/F8（P2 backlog，不阻塞）**：仿真后端与 PL 构建会话互斥（进程层改造）；PS include-path 缺口（ps_add_sources 结构保持）。

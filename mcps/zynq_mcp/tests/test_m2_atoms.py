@@ -35,13 +35,21 @@ def files(tmp_path):
     return str(src), str(root)
 
 
+# B13-F1 修复轮#7: 假响应必须用 _run_tcl 的**真实契约形状**
+# {"status": "success", "data": {"output": ...}}——output 在 data 层。
+# 修复轮#6 曾用顶层 "output" 的假形状，与真实契约脱节，导致两原子在真板
+# 恒报 FAILED 而单测全绿（F1 教训）。
+def _run_tcl_ok(output):
+    return {"status": "success", "data": {"output": output}}
+
+
 def _fake_run_tcl_maker(output, *, create_component_dir=None):
     async def _fake(adapter, tcl, label):
         if create_component_dir is not None:
             os.makedirs(create_component_dir, exist_ok=True)
             Path(create_component_dir, "component.xml").write_text(
                 "<spirit:component/>", encoding="utf-8")
-        return {"status": "success", "data": {}, "output": output}
+        return _run_tcl_ok(output)
     return _fake
 
 
@@ -79,7 +87,7 @@ class _RegCapture:
 
     async def __call__(self, adapter, tcl, label):
         self.tcl = tcl
-        return {"status": "success", "data": {}, "output": self._output}
+        return _run_tcl_ok(self._output)
 
 
 class TestPackageUserIp:
@@ -211,7 +219,7 @@ def _tcl_capture(monkeypatch, output="OBJVAL 100000000"):
 
     async def _fake(adapter, tcl, label):
         captured["tcl"] = tcl
-        return {"status": "success", "data": {}, "output": output}
+        return _run_tcl_ok(output)
     monkeypatch.setattr(platform_atoms, "_run_tcl", _fake)
     return captured
 

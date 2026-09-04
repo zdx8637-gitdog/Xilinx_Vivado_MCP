@@ -20,13 +20,13 @@ AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）
 # 主测试套件（必须从项目根目录运行，勿 cd 进 mcps/）
 python -m pytest mcps
 
-# 非硬件回归（跳过需 EDA 工具或硬件的测试）：1477 passed / 1 skipped / 43 deselected / 0 failed（约 213 秒；1 skipped 为 B02 POSIX-only；43 deselected = 39 host_live + 4 device_live）
+# 非硬件回归（跳过需 EDA 工具或硬件的测试）：1483 passed / 1 skipped / 43 deselected / 0 failed（约 209 秒；1 skipped 为 B02 POSIX-only；43 deselected = 39 host_live + 4 device_live）
 python -m pytest mcps -m "not host_live and not device_live"
 
 # 单个测试
 python -m pytest mcps/zynq_mcp/tests/test_r1_gate.py -k <test_name>
 
-# 机械门禁用的收集统计（当前 1521 collected）
+# 机械门禁用的收集统计（当前 1527 collected）
 python -m pytest mcps --collect-only -q
 
 # 列出所有 pytest marker

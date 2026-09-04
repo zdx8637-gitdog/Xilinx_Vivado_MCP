@@ -493,6 +493,14 @@ async def platform_make_external(adapter, *, port_name: str, source_pin: str,
     queries match nothing on real Vivado — D8) and the port facts returned
     (fail-closed EXTERNAL_PORT_CREATE_FAILED otherwise). Only admitted in
     PLATFORM_DESIGN and never advances the stage.
+
+    B13-F5 (white-box evidence): an externalized AXI interface port alone
+    triggers ``BD 41-2559 ... not associated to any clock port``. There is
+    NO atom-level fix in 2023.1: plain signal-mode ports lack the
+    ASSOCIATED_BUSIF parameter (BD 41-1411) and the PS7 FCLK_CLK0 pin's
+    ASSOCIATED_BUSIF is read-only (BD 41-737). Designs needing an external
+    AXI loop must keep the connections internal to the BD (white-box r5
+    engineering route).
     """
     if not isinstance(port_name, str) or not port_name.strip():
         raise PlatformError("port_name must be a non-empty string", "INVALID_ARGUMENT")
@@ -1254,6 +1262,14 @@ async def platform_package_user_ip(adapter, *, sources, ip_name,
     open project (USER_IP_NO_OPEN_PROJECT otherwise — run
     platform_create_design first). Re-running re-packages the same IP
     idempotently.
+
+    B13-F4 (white-box evidence): ``ipx::package_project`` does NOT infer
+    clock association for bare RTL bus interfaces — the packaged
+    component.xml has no clock busInterface / ASSOCIATED_BUSIF and BD
+    validate raises ``BD 41-967 AXI interface pin ... not associated to any
+    clock pin``. The RTL should expose ``<BUSIF>_ACLK`` / ``<BUSIF>_ARESETN``
+    ports (e.g. ``M_AXIS_ACLK``/``M_AXIS_ARESETN``); BD then auto-associates
+    by naming convention.
     """
     if not isinstance(sources, list) or not sources or \
             not all(isinstance(s, str) and s.strip() for s in sources):
@@ -1303,7 +1319,9 @@ async def platform_package_user_ip(adapter, *, sources, ip_name,
         res = await _run_tcl(adapter, reg_tcl, "register_user_ip")
     except AdapterError as e:
         raise PlatformError(str(e), "USER_IP_REGISTER_FAILED")
-    out = (res or {}).get("output", "")
+    # B13-F1 修复轮#7: _run_tcl 返回完整响应包，output 在 data 层——必须走
+    # _tcl_output（顶层 .get("output") 恒空 → 真成功被误判 FAILED）。
+    out = _tcl_output(res)
     if "NO_OPEN_PROJECT" in out:
         raise PlatformError(
             "no Vivado project open — run platform_create_design before "
@@ -1339,6 +1357,9 @@ async def platform_set_bd_object_property(adapter, *, bd_object, property,
     no-op success). Read-only parameters raise CRITICAL WARNING and read back
     empty → BD_OBJECT_PROPERTY_VERIFY_FAILED (fail-closed). Multiple matches
     are rejected as ambiguous (BD_OBJECT_AMBIGUOUS).
+    B13-F2 (white-box evidence): the CRITICAL WARNING of a read-only write
+    lands in vivado.log only — it does not pollute the validate gate
+    (validate judges the design state, not the log).
     """
     for arg_name, v in (("bd_object", bd_object), ("property", property)):
         if not isinstance(v, str) or not v.strip():
@@ -1371,7 +1392,8 @@ async def platform_set_bd_object_property(adapter, *, bd_object, property,
         if "BD_OBJECT_AMBIGUOUS" in msg:
             raise PlatformError(msg, "BD_OBJECT_AMBIGUOUS")
         raise PlatformError(msg, "BD_OBJECT_PROPERTY_FAILED")
-    out = (res or {}).get("output", "")
+    # B13-F1 修复轮#7: 响应包层级——output 在 data 层，走 _tcl_output。
+    out = _tcl_output(res)
     if f"OBJVAL {value}" not in out:
         raise PlatformError(
             f"property {prop} on {bd_object} did not read back as {value!r} "
