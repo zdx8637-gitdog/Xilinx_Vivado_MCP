@@ -721,6 +721,12 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
                                      tolerate_stderr=True)
             verr = extract_bridge_error(result)
             if verr:
+                msg = str(verr[2] or "")
+                # B13-M5b: 幂等——XSCT 对已存在的符号报
+                # "Defined symbols (-D) already contains the item <sym>"
+                # （真机验证），重复应用同一 define 视为成功；其他错误照常失败。
+                if "already contains the item" in msg:
+                    continue
                 return ps_error(
                     "BUILD_FAILED",
                     f"app config define failed: {verr[2]}",
