@@ -622,7 +622,7 @@ class TestMakeExternal:
 
     @pytest.mark.asyncio
     async def test_interface_mode_uses_make_bd_intf_pins_external(self):
-        adapter = _FakeAdapter([{"output": ""}, {"output": "/DDR /FIXED_IO /M_AXI_GP0"}])
+        adapter = _FakeAdapter([{"output": "EXT_PORT /M_AXI_GP0"}])
         out = await platform_make_external(adapter,
             port_name="M_AXI_GP0", source_pin="processing_system7_0/M_AXI_GP0",
             interface=True)
@@ -634,11 +634,27 @@ class TestMakeExternal:
         # pins (BD 5-407); interface pins use make_bd_intf_pins_external.
         assert "make_bd_intf_pins_external" in tcl
         assert "get_bd_intf_pins -quiet -of_objects [get_bd_cells -quiet $__ip]" in tcl
-        assert adapter.calls[1][1]["command"] == "puts [get_bd_intf_ports *]"
+        # B13-M2 ④: the derived name is captured via the interface net
+        # (-of_objects on the pin matches nothing — BD 5-233), not guessed
+        # from the pin basename
+        assert ("set __ext [get_bd_intf_ports -of_objects "
+                "[get_bd_intf_nets -of_objects $__pin]]") in tcl
+        assert 'puts "EXT_PORT $__ext"' in tcl
+        assert len(adapter.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_interface_derived_suffix_name_captured(self):
+        # real-Vivado verified: axi_gpio_0/S_AXI externalizes as S_AXI_0,
+        # axi_gpio_1/S_AXI as S_AXI_1 — the pin basename ("S_AXI") is wrong
+        adapter = _FakeAdapter([{"output": "EXT_PORT /S_AXI_0"}])
+        out = await platform_make_external(adapter,
+            port_name="S_AXI", source_pin="axi_gpio_0/S_AXI", interface=True)
+        assert out["status"] == "success"
+        assert out["data"]["port_name"] == "S_AXI_0"
 
     @pytest.mark.asyncio
     async def test_interface_pin_missing_fails_closed(self):
-        adapter = _FakeAdapter([{"output": ""}, {"output": "/DDR"}])
+        adapter = _FakeAdapter([{"output": ""}])
         with pytest.raises(PlatformError) as ei:
             await platform_make_external(adapter,
                 port_name="NOPE", source_pin="processing_system7_0/NOPE",
@@ -1106,13 +1122,14 @@ class TestTclErrorClassification:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestRegistrationConsistency:
-    def test_atom_count_is_17(self):
+    def test_atom_count_is_19(self):
         # B11 ③.1: 14 B05-R2 atoms + assign_addresses/make_external/synthesize
-        assert len(PLATFORM_ATOM_TOOL_NAMES) == 17
-        assert len(PLATFORM_ATOM_MAP) == 17
+        # = 17; B13-M2: platform_package_user_ip/platform_set_bd_object_property = 19
+        assert len(PLATFORM_ATOM_TOOL_NAMES) == 19
+        assert len(PLATFORM_ATOM_MAP) == 19
         assert PLATFORM_ATOM_COMMAND_TOOL_NAMES | PLATFORM_ATOM_QUERY_TOOL_NAMES \
             == PLATFORM_ATOM_TOOL_NAMES
-        assert len(PLATFORM_ATOM_COMMAND_TOOL_NAMES) == 15
+        assert len(PLATFORM_ATOM_COMMAND_TOOL_NAMES) == 17
         assert len(PLATFORM_ATOM_QUERY_TOOL_NAMES) == 2
 
     def test_every_atom_registered_in_capabilities(self):

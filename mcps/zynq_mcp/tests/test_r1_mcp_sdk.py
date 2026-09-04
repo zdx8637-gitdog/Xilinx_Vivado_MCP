@@ -117,7 +117,7 @@ class TestAllTools:
             async with stdio_client(params) as (r,w):
                 async with ClientSession(r,w) as s:
                     await s.initialize()
-                    d=await _call(s,"get_capabilities"); assert d["data"]["total_tools"]==107
+                    d=await _call(s,"get_capabilities"); assert d["data"]["total_tools"]==109
                     d=await _call(s,"get_execution_state"); assert d["data"]["instance_role"]=="primary"
                     proj=tempfile.mkdtemp()
                     d=await _call(s,"create_session",{"board_id":"ALINX_AX7020_v1.0","project_path":proj})

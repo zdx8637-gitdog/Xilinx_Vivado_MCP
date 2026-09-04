@@ -388,6 +388,24 @@ DOMAIN_TOOLS: list[Tool] = [
     Tool(name="platform_export_manifest", description="Re-export the structured platform manifest JSON from the open BD (standalone, idempotent); requires a ready BD plus existing wrapper + XSA under {project_path}; default path {project_path}/manifests/platform/sha256_<rev>.json",
          inputSchema={"type": "object", "properties": {
              "path": {"type": "string"}}, "additionalProperties": False}),
+    # B13-M2: user IP packaging + BD object property atoms (real-Vivado verified)
+    Tool(name="platform_package_user_ip", description="Package RTL sources into a user IP (ipx flow) and register its repo in the open project via ip_repo_paths + update_ip_catalog; the packaged VLNV <vendor>:<library>:<ip_name>:1.0 becomes instantiable via platform_add_ip (catalog read-back verified, fail-closed)",
+         inputSchema={"type": "object", "properties": {
+             "sources": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+             "ip_name": {"type": "string", "minLength": 1},
+             "vendor": {"type": "string"},
+             "library": {"type": "string"},
+             "part": {"type": "string", "minLength": 1},
+             "root_dir": {"type": "string", "minLength": 1}},
+             "required": ["sources", "ip_name", "part", "root_dir"],
+             "additionalProperties": False}),
+    Tool(name="platform_set_bd_object_property", description="Set a property on a BD object with read-back verification; object kind auto-detected (bd port, then pin, then interface pin) — e.g. CONFIG.FREQ_HZ on a clock port, CONFIG.ASSOCIATED_BUSIF on a clock pin, CONFIG.PROTOCOL on an AXI interface pin (read-only/nonexistent params fail closed)",
+         inputSchema={"type": "object", "properties": {
+             "bd_object": {"type": "string", "minLength": 1},
+             "property": {"type": "string", "minLength": 1},
+             "value": {"type": "string"}},
+             "required": ["bd_object", "property", "value"],
+             "additionalProperties": False}),
 ]  # R3.1-C + B05 + B06 first batch (22 PS) + B06 second batch (11 BSP) + B06 third batch (9 download/debug) + B07 PL bridge (26) + B01 UART capture (3) + B01 Phase 4 verify_consistency (1) + B01 UART diagnostics (1) + B01 Phase 6 observation (1) + B05-R2 platform atoms (14) + B11 ③.1 platform atoms (3) + ps_ensure_arm_accessible (1) + B12-N3 ps_start_hw_server (1)
 
 def _inject_ps_session_schema(tool: Tool) -> Tool:
@@ -457,7 +475,7 @@ def build_capabilities(instance_role: str = "primary",
         "status": "adapter_ready" if adapter_status == "ready" else "single_channel_ready",
         "instance_role": instance_role,
         "domains": {
-            "platform":   {"implemented": 17, "planned": 14, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},  # B05-R2 atoms(14) + B11 ③.1 assign_addresses/make_external/synthesize(17); platform_generate removed B11 phase 2
+            "platform":   {"implemented": 19, "planned": 14, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},  # B05-R2 atoms(14) + B11 ③.1 assign_addresses/make_external/synthesize(17) + B13-M2 package_user_ip/set_bd_object_property(19); platform_generate removed B11 phase 2
             "pl":         {"implemented": 27, "planned": 12, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},
             "ps":         {"implemented": 49, "planned": 19, "status": "bridge_ready"},
             "control":    {"implemented": len(CONTROL_TOOLS), "total": len(CONTROL_TOOLS)},

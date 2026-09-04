@@ -45,6 +45,7 @@ Only existing helpers from platform_domain are reused (no platform_domain
 code is modified): ``_run_tcl``, ``_tcl_output``, ``_resolve_board_package``,
 ``_sha256_file`` and the structured exception classes.
 """
+import asyncio
 import json
 import os
 import re
@@ -478,8 +479,11 @@ async def platform_make_external(adapter, *, port_name: str, source_pin: str,
         (bare / ``-filter`` intf-pin queries match nothing on real Vivado
         2023.1 — D8) and externalized with ``make_bd_intf_pins_external``
         (real-Vivado verified: ``make_bd_pins_external`` only applies to
-        regular pins — BD 5-407). Vivado derives the port name from the pin
-        (returned as the last path component of ``source_pin``).
+        regular pins — BD 5-407). Vivado derives the port name itself and
+        may append a suffix (B13-M2 ④: axi_gpio_0/S_AXI → S_AXI_0); the
+        actual name is captured via ``get_bd_intf_ports -of_objects
+        [get_bd_intf_nets -of_objects <pin>]`` (real-Vivado verified; the
+        pin-basename guess is wrong).
       - signal mode (default): ``create_bd_port -dir <I|O|IO> [-from w-1 -to
         0] <port_name>`` then ``connect_bd_net [get_bd_pins <source_pin>]
         [get_bd_ports <port_name>]``.
@@ -513,15 +517,23 @@ async def platform_make_external(adapter, *, port_name: str, source_pin: str,
             "if {$__pin eq \"\"} {\n"
             f"  error \"INTF_PIN_NOT_FOUND:{{{source_pin}}}\"\n"
             "}\n"
-            "make_bd_intf_pins_external $__pin")
-        await _run_tcl(adapter, resolve_tcl, "make_external")
-        derived = source_pin.rstrip("/").rsplit("/", 1)[-1]
-        verify = await _run_tcl(adapter, "puts [get_bd_intf_ports *]",
-                                 "verify_external_port")
-        if derived not in _bd_port_names(_tcl_output(verify)):
+            "make_bd_intf_pins_external $__pin\n"
+            # Vivado derives the external port name itself and may add a
+            # suffix (real-Vivado verified: axi_gpio_0/S_AXI → S_AXI_0,
+            # axi_gpio_1/S_AXI → S_AXI_1 — B13-M2 ④). The pin-basename
+            # guess is wrong; capture the truth via the interface net:
+            # -of_objects on the PIN matches nothing (BD 5-233), but
+            # -of_objects on the NET of the pin returns the port.
+            "set __ext [get_bd_intf_ports -of_objects "
+            "[get_bd_intf_nets -of_objects $__pin]]\n"
+            'puts "EXT_PORT $__ext"')
+        res = await _run_tcl(adapter, resolve_tcl, "make_external")
+        m = re.search(r"EXT_PORT\s+(\S+)", _tcl_output(res))
+        if not m or not m.group(1).lstrip("/"):
             raise PlatformError(
-                f"External interface port for {source_pin} was not created",
-                "EXTERNAL_PORT_CREATE_FAILED")
+                f"External interface port for {source_pin} was not created "
+                "(no EXT_PORT capture)", "EXTERNAL_PORT_CREATE_FAILED")
+        derived = m.group(1).lstrip("/")
         return {"status": "success", "data": {
             "port_name": derived, "source_pin": source_pin,
             "interface": True, "direction": "interface"}}
@@ -1061,6 +1073,315 @@ async def platform_export_manifest(adapter, *, path: str | None = None,
     }, "_context_updates": {"platform_revision": platform_revision}}
 
 
+# ── user IP packaging helpers (B13-M2) ────────────────────────────────
+# The ipx flow needs its own Vivado project, but the session's persistent
+# Vivado may hold the OPEN design project whose BD lives in memory (no atom
+# ever calls save_bd_design). create_project in that session would close the
+# design and silently discard the BD — so packaging runs in a THROWAWAY
+# ``vivado -mode batch`` subprocess; only the non-destructive repo
+# registration (ip_repo_paths + update_ip_catalog) runs in-session.
+# Same executable-resolution order the Vivado adapter uses (VIVADO_EXEC →
+# $VIVADO_ROOT/bin → default install → PATH).
+
+_DEFAULT_VIVADO_BIN = "D:/Xilinx/Vivado/2023.1/bin"
+_VIVADO_NAME_VARIANTS = ("vivado.bat", "vivado.exe", "vivado")
+
+
+def _find_vivado_batch_exe() -> str | None:
+    val = os.environ.get("VIVADO_EXEC", "").strip()
+    if val:
+        if os.path.isfile(val):
+            return val
+        for variant in _VIVADO_NAME_VARIANTS:
+            p = os.path.join(os.path.dirname(val), variant)
+            if os.path.isfile(p):
+                return p
+    root = os.environ.get("VIVADO_ROOT", "").strip()
+    if root:
+        for variant in _VIVADO_NAME_VARIANTS:
+            p = os.path.join(root, "bin", variant)
+            if os.path.isfile(p):
+                return p
+    for variant in _VIVADO_NAME_VARIANTS:
+        p = os.path.join(_DEFAULT_VIVADO_BIN, variant)
+        if os.path.isfile(p):
+            return p
+    return shutil.which("vivado")
+
+
+def _windows_launch_cmd(exe_path: str, args: list[str]) -> list[str]:
+    """On Windows, .bat wrappers must run under cmd.exe /d /c (the child
+    process cannot be spawned directly — CreateProcess rejects batch files)."""
+    if os.name == "nt" and exe_path.lower().endswith((".bat", ".cmd")):
+        return ["cmd.exe", "/d", "/c", exe_path, *args]
+    return [exe_path, *args]
+
+
+def _vendor_subprocess_env() -> dict:
+    """Vivado's Windows loader.bat exits silently without
+    PROCESSOR_ARCHITECTURE; restore it when a launcher provided a narrow env."""
+    env = os.environ.copy()
+    if os.name == "nt":
+        env.setdefault(
+            "PROCESSOR_ARCHITECTURE",
+            env.get("PROCESSOR_ARCHITEW6432", "") or "AMD64")
+    return env
+
+
+def _package_user_ip_tcl(sources, part, save_dir, pkg_proj, ip_name,
+                         vendor, library) -> str:
+    """Deterministic packaging script (real-Vivado verified 2023.1): the
+    ``-in_memory`` non-project mode is deprecated and ``ipx::save_core_as``
+    is not a valid 2023.1 command — file-based project + ``ipx::save_core``
+    is the working flow. Re-packaging deletes only this IP's save_dir and
+    the throwaway project (idempotent re-run)."""
+    add_files = " ".join(f"{{{s}}}" for s in sources)
+    return (
+        f"file delete -force {{{pkg_proj}}}\n"
+        f"file delete -force {{{save_dir}}}\n"
+        f"file mkdir {{{pkg_proj}}}\n"
+        f"create_project -force m2_pkg {{{pkg_proj}}} -part {{{part}}}\n"
+        f"add_files {add_files}\n"
+        f"ipx::package_project -root_dir {{{save_dir}}} "
+        f"-vendor {vendor} -library {library} -taxonomy /UserIP -import_files "
+        "-force_update_compile_order\n"
+        "set_property core_revision 1 [ipx::current_core]\n"
+        f"set_property name {{{ip_name}}} [ipx::current_core]\n"
+        f"set_property display_name {{{ip_name}}} [ipx::current_core]\n"
+        "ipx::update_checksums [ipx::current_core]\n"
+        "ipx::save_core\n"
+        'puts "PACKAGE_DONE"\n'
+    )
+
+
+async def _run_vivado_batch(script_path, log_path, *, cwd=None,
+                            timeout_s=600.0) -> tuple[int, str]:
+    """Run a standalone ``vivado -mode batch`` subprocess for throwaway
+    packaging. Returns (returncode, combined stdout). Fail-closed on
+    missing executable, launch failure, or timeout (timeout kills the whole
+    Windows process tree via taskkill /T)."""
+    exe = _find_vivado_batch_exe()
+    if not exe:
+        raise PlatformError("vivado executable not found "
+                            "(VIVADO_EXEC/VIVADO_ROOT/PATH)",
+                            "VIVADO_NOT_FOUND")
+    if cwd is not None and not os.path.isdir(cwd):
+        raise PlatformError(f"batch working dir does not exist: {cwd}",
+                            "INVALID_ARGUMENT")
+    cmd = _windows_launch_cmd(
+        exe, ["-mode", "batch", "-source", script_path,
+              "-log", log_path, "-journal", log_path + ".jou"])
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, cwd=cwd, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            stdin=asyncio.subprocess.DEVNULL,
+            env=_vendor_subprocess_env())
+    except OSError as e:
+        raise PlatformError(f"failed to launch vivado batch: {e}",
+                            "VIVADO_LAUNCH_FAILED")
+    try:
+        stdout, _ = await asyncio.wait_for(proc.communicate(),
+                                           timeout=timeout_s)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except OSError:
+            pass  # best-effort; the tree kill below is the real cleanup
+        if os.name == "nt" and proc.pid:
+            try:
+                await asyncio.wait_for(asyncio.create_subprocess_exec(
+                    "taskkill", "/PID", str(proc.pid), "/T", "/F",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL).wait(), 30)
+            except (OSError, asyncio.TimeoutError):
+                pass  # tree already gone or taskkill unavailable
+        raise PlatformError(
+            f"vivado batch timed out after {timeout_s:.0f}s",
+            "USER_IP_PACKAGE_TIMEOUT")
+    return proc.returncode, (stdout or b"").decode("utf-8", "replace")
+
+
+def _register_user_ip_tcl(root_dir: str, vlnv: str) -> str:
+    """In-session, non-destructive repo registration: append root_dir to
+    ip_repo_paths (existing repos preserved, idempotent via lsearch),
+    rebuild the catalog, print the VLNV read-back. Prints NO_OPEN_PROJECT
+    when no project is open (the atom maps that fail-closed).
+
+    Paths are normalized to forward slashes: an unbraced Windows path
+    substituted into Tcl has its backslashes stripped (``C:\\Users`` →
+    ``C:Users`` — real-Vivado probe evidence: Common 17-161 via empty
+    get_ipdefs), forward slashes are inert and Vivado accepts them."""
+    root_dir = root_dir.replace("\\", "/")
+    return (
+        "set __c [current_project -quiet]\n"
+        "if {[llength $__c] == 0} {\n"
+        '  puts "NO_OPEN_PROJECT"\n'
+        "} else {\n"
+        "  set __repos [get_property ip_repo_paths [current_project]]\n"
+        f"  if {{[lsearch -exact $__repos {{{root_dir}}}] < 0}} {{\n"
+        f"    set_property ip_repo_paths [concat $__repos {{{root_dir}}}] "
+        "[current_project]\n"
+        "  }\n"
+        "  update_ip_catalog -rebuild\n"
+        f"  puts \"VLNV [get_property VLNV [lindex [get_ipdefs -all {vlnv}] 0]]\"\n"
+        "}\n"
+    )
+
+
+async def platform_package_user_ip(adapter, *, sources, ip_name,
+                                   vendor="user.org", library="user",
+                                   part=None, root_dir=None) -> dict:
+    """Package RTL sources into a user IP and register its repo in the open
+    project (B13-M2). The packaged IP becomes instantiable via
+    ``platform_add_ip`` with VLNV ``<vendor>:<library>:<ip_name>:1.0``.
+
+    Two halves (real-Vivado verified 2023.1):
+      1. packaging — a throwaway ``vivado -mode batch`` subprocess creates
+         its own project under ``{root_dir}/.pkg_proj``, runs the ipx flow
+         (``ipx::package_project`` → core identity → ``ipx::save_core``) and
+         writes the IP directory under
+         ``{root_dir}/{vendor}/{library}/{ip_name}/1.0``. It NEVER touches
+         the session's persistent Vivado (in-session create_project would
+         close the open design project and discard the in-memory BD — no
+         atom persists the BD to disk).
+      2. registration — in the open project: append ``root_dir`` to
+         ``ip_repo_paths`` (existing repos preserved, idempotent) +
+         ``update_ip_catalog -rebuild`` + VLNV visibility check via
+         ``get_ipdefs`` (fail-closed, no silent no-ops).
+
+    ``sources`` paths are absolutized against the server cwd. Requires an
+    open project (USER_IP_NO_OPEN_PROJECT otherwise — run
+    platform_create_design first). Re-running re-packages the same IP
+    idempotently.
+    """
+    if not isinstance(sources, list) or not sources or \
+            not all(isinstance(s, str) and s.strip() for s in sources):
+        raise PlatformError("sources must be a non-empty list of paths",
+                            "INVALID_ARGUMENT")
+    if not isinstance(ip_name, str) or not ip_name.strip():
+        raise PlatformError("ip_name must be a non-empty string",
+                            "INVALID_ARGUMENT")
+    if not isinstance(root_dir, str) or not root_dir.strip():
+        raise PlatformError("root_dir must be a non-empty string",
+                            "INVALID_ARGUMENT")
+    if not isinstance(part, str) or not part.strip():
+        raise PlatformError("part is required (device part number)",
+                            "INVALID_ARGUMENT")
+    sources = [os.path.abspath(s) for s in sources]
+    for s in sources:
+        if not os.path.isfile(s):
+            raise PlatformError(f"source file not found: {s}",
+                                "SOURCE_NOT_FOUND")
+    ip_name = ip_name.strip()
+    vendor = vendor.strip() or "user.org"
+    library = library.strip() or "user"
+    vlnv = f"{vendor}:{library}:{ip_name}:1.0"
+    # forward slashes everywhere the path lands in Tcl substitution
+    # (backslash stripping in unbraced Tcl words corrupts Windows paths)
+    root_dir = root_dir.strip().replace("\\", "/")
+    save_dir = os.path.join(root_dir, vendor, library, ip_name, "1.0")
+    pkg_proj = os.path.join(root_dir, ".pkg_proj")
+    pkg_log_dir = os.path.join(root_dir, ".pkg_log")
+    os.makedirs(pkg_log_dir, exist_ok=True)
+    script_path = os.path.join(pkg_log_dir, "package_user_ip.tcl")
+    log_path = os.path.join(pkg_log_dir, "vivado.log")
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(_package_user_ip_tcl(sources, part, save_dir, pkg_proj,
+                                     ip_name, vendor, library))
+    rc, stdout = await _run_vivado_batch(script_path, log_path,
+                                         cwd=root_dir)
+    if rc != 0 or "PACKAGE_DONE" not in stdout:
+        raise PlatformError(
+            f"user IP packaging failed (rc={rc}); tail: {stdout[-400:]}",
+            "USER_IP_PACKAGE_FAILED")
+    if not os.path.isfile(os.path.join(save_dir, "component.xml")):
+        raise PlatformError("component.xml not created under repo",
+                            "USER_IP_COMPONENT_MISSING")
+    reg_tcl = _register_user_ip_tcl(root_dir, vlnv)
+    try:
+        res = await _run_tcl(adapter, reg_tcl, "register_user_ip")
+    except AdapterError as e:
+        raise PlatformError(str(e), "USER_IP_REGISTER_FAILED")
+    out = (res or {}).get("output", "")
+    if "NO_OPEN_PROJECT" in out:
+        raise PlatformError(
+            "no Vivado project open — run platform_create_design before "
+            "packaging user IP (the repo must be registered in the design "
+            "project)", "USER_IP_NO_OPEN_PROJECT")
+    if vlnv not in out:
+        raise PlatformError(
+            f"VLNV {vlnv} not visible in catalog after registration "
+            f"(catalog verification failed)", "USER_IP_CATALOG_VERIFY_FAILED")
+    return {"status": "success", "data": {
+        "vlnv": vlnv,
+        "save_dir": save_dir,
+        "repo_root": root_dir,
+    }}
+
+
+async def platform_set_bd_object_property(adapter, *, bd_object, property,
+                                          value) -> dict:
+    """Set a property on a BD object with read-back verification (B13-M2).
+
+    The object kind is auto-detected: ``get_bd_ports`` is tried first, then
+    ``get_bd_pins``, then ``get_bd_intf_pins`` (real-Vivado verified: a bare
+    name query of the wrong kind matches nothing — D8). Real-Vivado verified
+    uses (Vivado 2023.1, xc7z020):
+
+      - port (clock-type):   ``CONFIG.FREQ_HZ``        (m_clk_port → 100000000)
+      - pin (IP clock pin):  ``CONFIG.FREQ_HZ`` / ``CONFIG.ASSOCIATED_BUSIF``
+        (m2_probe_0/aclk → S_AXI — the real home of ASSOCIATED_BUSIF; it is
+        NOT settable on bd_ports, BD 41-1642)
+      - interface pin:       ``CONFIG.PROTOCOL`` (axi_gpio_0/S_AXI → AXI4LITE)
+
+    The set is verified by reading the property back (D-A lesson: no silent
+    no-op success). Read-only parameters raise CRITICAL WARNING and read back
+    empty → BD_OBJECT_PROPERTY_VERIFY_FAILED (fail-closed). Multiple matches
+    are rejected as ambiguous (BD_OBJECT_AMBIGUOUS).
+    """
+    for arg_name, v in (("bd_object", bd_object), ("property", property)):
+        if not isinstance(v, str) or not v.strip():
+            raise PlatformError(f"{arg_name} must be a non-empty string",
+                                "INVALID_ARGUMENT")
+    if not isinstance(value, str):
+        raise PlatformError("value must be a string", "INVALID_ARGUMENT")
+    bd_object = bd_object.strip()
+    prop = property.strip()
+    tcl = (
+        f"set __objs [get_bd_ports -quiet {{{bd_object}}}]\n"
+        f"if {{[llength $__objs] == 0}} {{ set __objs [get_bd_pins -quiet "
+        f"{{{bd_object}}}] }}\n"
+        f"if {{[llength $__objs] == 0}} {{ set __objs [get_bd_intf_pins "
+        f"-quiet {{{bd_object}}}] }}\n"
+        f"if {{[llength $__objs] == 0}} {{ error \"BD_OBJECT_NOT_FOUND:"
+        f"{{{bd_object}}}\" }}\n"
+        f"if {{[llength $__objs] > 1}} {{ error \"BD_OBJECT_AMBIGUOUS:"
+        f"{{{bd_object}}}\" }}\n"
+        "set __obj [lindex $__objs 0]\n"
+        f"set_property -dict [list {{{prop}}} {{{value}}}] $__obj\n"
+        f"puts \"OBJVAL [get_property {{{prop}}} $__obj]\"\n"
+    )
+    try:
+        res = await _run_tcl(adapter, tcl, "set_bd_object_property")
+    except AdapterError as e:
+        msg = str(e)
+        if "BD_OBJECT_NOT_FOUND" in msg:
+            raise PlatformError(msg, "BD_OBJECT_NOT_FOUND")
+        if "BD_OBJECT_AMBIGUOUS" in msg:
+            raise PlatformError(msg, "BD_OBJECT_AMBIGUOUS")
+        raise PlatformError(msg, "BD_OBJECT_PROPERTY_FAILED")
+    out = (res or {}).get("output", "")
+    if f"OBJVAL {value}" not in out:
+        raise PlatformError(
+            f"property {prop} on {bd_object} did not read back as {value!r} "
+            f"(read-only or nonexistent parameter)",
+            "BD_OBJECT_PROPERTY_VERIFY_FAILED")
+    return {"status": "success", "data": {
+        "object": bd_object, "property": prop, "value": value,
+    }}
+
+
 # ═══════════════════════════════════════════
 #  Dispatch registry — single source for the dispatcher
 # ═══════════════════════════════════════════
@@ -1083,6 +1404,8 @@ PLATFORM_ATOM_MAP: dict[str, object] = {
     "platform_synthesize": platform_synthesize,
     "platform_export_hardware": platform_export_hardware,
     "platform_export_manifest": platform_export_manifest,
+    "platform_package_user_ip": platform_package_user_ip,
+    "platform_set_bd_object_property": platform_set_bd_object_property,
 }
 
 PLATFORM_ATOM_TOOL_NAMES: frozenset = frozenset(PLATFORM_ATOM_MAP.keys())
@@ -1096,6 +1419,7 @@ PLATFORM_ATOM_COMMAND_TOOL_NAMES: frozenset = frozenset({
     "platform_assign_addresses", "platform_make_external",
     "platform_validate", "platform_generate_wrapper", "platform_synthesize",
     "platform_export_hardware", "platform_export_manifest",
+    "platform_package_user_ip", "platform_set_bd_object_property",
 })
 
 # query atoms (read directly by the dispatcher query handlers)
@@ -1122,6 +1446,8 @@ PLATFORM_ATOM_CONTEXT_ARGS: dict[str, tuple] = {
     # board_id + board_profile_sha256 come from the session context; the atom
     # needs them to build the manifest's config_files / board profile fields.
     "platform_export_manifest": ("project_path", "board_id", "board_profile_sha256"),
+    "platform_package_user_ip": (),
+    "platform_set_bd_object_property": (),
 }
 
 # per-tool outer wait (s). Must exceed the adapter's run_tcl default
@@ -1146,4 +1472,7 @@ PLATFORM_ATOM_TIMEOUT: dict[str, float] = {
     "platform_synthesize": 1860.0,
     "platform_export_hardware": 180.0,
     "platform_export_manifest": 60.0,
+    # ipx packaging + catalog rebuild runs several minutes on first use
+    "platform_package_user_ip": 600.0,
+    "platform_set_bd_object_property": 60.0,
 }

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）FPGA 开发框架。Claude 通过 MCP Server 操作 Vivado/XSim/Vitis 等 EDA 工具，按「三域四层 + Brick」计划增量构建。
 
 - 冻结顶层架构：[docs/architecture_ai_zynq7020.md](docs/architecture_ai_zynq7020.md) v2.3.1
-- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线）；B11 ✅ **COMPLETE（2026-08-16）**：泛化框架黑盒验证——Skill/MCP 去 GPIO 化 + 6-LED 考题，全六阶段闭环（输入冻结见 [B11_phase4_blackbox_basis.md](docs/development/tests/B11_phase4_blackbox_basis.md)）；B12 进行中（2026-08-24 立项）：数据采集链路（AD7606C-16）——**A1 DMA 环回白盒+黑盒 PASS（2026-08-25）**、**A2 白盒：真板采集实测成功（盲测通道已识别）；A2 v2 串行推进中——开发流程修复轮（D1/D-B/D-E/D-A/D-C）先行，随后白盒 v2（PL 环形缓冲 + UART 指令上传固定 1s×8 通道 + 8 通道波形图），通过后 A2 黑盒（用户授权自动推进，仅重大问题停止；2026-08-25）**、B13 TCP 高速后置；MCP 107 工具（B13-M1 修复轮#1 新增 `workflow_rollback`/`workflow_resume_from`；此前 105 = N3 ps_start_hw_server + 修复轮#2 pl_reset_run）。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；B11 规划：[docs/development/mcp/B11_plan.md](docs/development/mcp/B11_plan.md)）
+- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线）；B11 ✅ **COMPLETE（2026-08-16）**：泛化框架黑盒验证——Skill/MCP 去 GPIO 化 + 6-LED 考题，全六阶段闭环（输入冻结见 [B11_phase4_blackbox_basis.md](docs/development/tests/B11_phase4_blackbox_basis.md)）；B12 进行中（2026-08-24 立项）：数据采集链路（AD7606C-16）——**A1 DMA 环回白盒+黑盒 PASS（2026-08-25）**、**A2 白盒：真板采集实测成功（盲测通道已识别）；A2 v2 串行推进中——开发流程修复轮（D1/D-B/D-E/D-A/D-C）先行，随后白盒 v2（PL 环形缓冲 + UART 指令上传固定 1s×8 通道 + 8 通道波形图），通过后 A2 黑盒（用户授权自动推进，仅重大问题停止；2026-08-25）**、B13 TCP 高速后置；MCP 109 工具（B13-M2 修复轮#6 新增 `platform_package_user_ip`/`platform_set_bd_object_property`；此前 107 = B13-M1 修复轮#1 的 `workflow_rollback`/`workflow_resume_from`）。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；B11 规划：[docs/development/mcp/B11_plan.md](docs/development/mcp/B11_plan.md)）
 - Execution Observation：O1–O6 FROZEN，O7 R3 PASS，O8 冻结包已交付（2026-08-14）
 - 根目录是新的 core Git 仓库（分支 main，839 个文件）：基线 commit `4e0d148`，tag `o7r3-baseline-20260813` 锁定 O7 R3 基线；远端 origin = https://github.com/zdx8637-gitdog/Xilinx_Vivado_MCP（旧内容已按授权覆盖替换，原旧远程 HEAD `59f2abb` 已记录）。`Xilinx_Vivado_MCP/`、`Xilinx_Vitis_MCP/`、`zynq_platforms/` 三个旧仓库为 legacy/已出范围（保留在磁盘、各自独立且已停更的 Git 历史，不被新仓库跟踪）
 - 会话纪律速查（上下文压缩后必读）：[docs/development/B12_a2_working_discipline.md](docs/development/B12_a2_working_discipline.md)——零轮询/串行执行/盲测保密/缺陷口径/当前状态
@@ -20,19 +20,19 @@ AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）
 # 主测试套件（必须从项目根目录运行，勿 cd 进 mcps/）
 python -m pytest mcps
 
-# 非硬件回归（跳过需 EDA 工具或硬件的测试）：1442 passed / 1 skipped / 41 deselected / 0 failed（约 221 秒；1 skipped 为 B02 POSIX-only）
+# 非硬件回归（跳过需 EDA 工具或硬件的测试）：1477 passed / 1 skipped / 43 deselected / 0 failed（约 213 秒；1 skipped 为 B02 POSIX-only；43 deselected = 39 host_live + 4 device_live）
 python -m pytest mcps -m "not host_live and not device_live"
 
 # 单个测试
 python -m pytest mcps/zynq_mcp/tests/test_r1_gate.py -k <test_name>
 
-# 机械门禁用的收集统计（当前 1435 collected）
+# 机械门禁用的收集统计（当前 1521 collected）
 python -m pytest mcps --collect-only -q
 
 # 列出所有 pytest marker
 python -m pytest mcps --markers
 
-# 按 marker 运行（host_live 共 37 个 = 需 Vivado/XSim；device_live 共 4 个 = 需 USB-UART）
+# 按 marker 运行（host_live 共 39 个 = 需 Vivado/XSim；device_live 共 4 个 = 需 USB-UART）
 python -m pytest mcps -m "host_live"
 ```
 
@@ -57,7 +57,7 @@ python -m pytest mcps -m "host_live"
 | `Xilinx_Vitis_MCP/` | legacy/已出范围（独立 Git 仓库，Vitis MCP 骨架，已停更，不被新 core 仓库跟踪） |
 | `zynq_platforms/` | legacy/已出范围（独立 Git 仓库，已停更，不被新 core 仓库跟踪）。含 `ax7020_base/` block design、构建输出、Vitis workspace、Tcl 脚本 |
 | `mcps/common/` | 公共契约：`board_package.py`（板卡配置包）、`board_profile.py`、`project_lock.py`、`revision.py`、`artifact_schema.py`、`env_probe.py`、`error_codes.py`、`tool_response.py`、`api_category.py`、`control_api.py`、`jtag_lock.py`、`context.py` |
-| `mcps/zynq_mcp/` | 唯一 MCP（共 107 工具：11 control + 96 domain；B13-M1 修复轮#1 新增 `workflow_rollback`/`workflow_resume_from`；此前 B12-N3 `ps_start_hw_server`、修复轮#2 `pl_reset_run`，见 [B12_n3_hwserver_tool_report.md](docs/development/mcp/B12_n3_hwserver_tool_report.md)）：`control/`（execution_ledger、single_worker、execution_gate、instance_guard、process_guard、session、recovery、operation_service、operation_registry、capabilities、context、timeout_config、workspace、workflow）、`adapters/`（vivado/xsct/jtag/uart）、`domains/`（pl/platform/ps）。B10 已知限制①（计数漂移）已由 B11 阶段②关闭：`DOMAIN_APIS_IMPLEMENTED` 机械派生 |
+| `mcps/zynq_mcp/` | 唯一 MCP（共 109 工具：11 control + 98 domain；B13-M2 修复轮#6 新增 `platform_package_user_ip`/`platform_set_bd_object_property`；此前 B13-M1 `workflow_rollback`/`workflow_resume_from`、B12-N3 `ps_start_hw_server`、修复轮#2 `pl_reset_run`，见 [B12_n3_hwserver_tool_report.md](docs/development/mcp/B12_n3_hwserver_tool_report.md)）：`control/`（execution_ledger、single_worker、execution_gate、instance_guard、process_guard、session、recovery、operation_service、operation_registry、capabilities、context、timeout_config、workspace、workflow）、`adapters/`（vivado/xsct/jtag/uart）、`domains/`（pl/platform/ps）。B10 已知限制①（计数漂移）已由 B11 阶段②关闭：`DOMAIN_APIS_IMPLEMENTED` 机械派生 |
 | `mcps/{pl_mcp,platform_mcp,ps_mcp}/` | B02 过渡遗留（最终被 zynq_mcp 取代） |
 | `boards/ALINX_AX7020_v1.0/` | Board Configuration Package — 板卡唯一数据源（README.md、board.xdc、board_profile JSON、package_manifest、ps7_preset.tcl、SOURCES.md） |
 | `skills/zynq_dev/` | 泛化框架 Skill（B11 阶段①，零项目外设字样：SKILL.md + phases/0–8 + appendix_mechanics）；旧 GPIO Skill 已归档 `docs/development/skill/archive/zynq_gpio_v1/`（方案 A，SHA256 记录） |

@@ -21,6 +21,12 @@ Controller 持有的调试状态都绑定到该 session）。
 | JTAG 链 | `ps_list_targets` → ARM Cortex-A9 DAP 存在 | 标记 `BLOCKED: NO_ARM_DAP` |
 | UART | `ps_list_serial_ports`（按 `port` 字段判断，勿用字符串包含判断） | 标记 `BLOCKED: NO_UART` |
 
+> **双端字节级 KAT 对拍（联调前强制）**：协议/帧格式类接口在联调前，双方
+> 实现必须用**同一组字节级 KAT 向量**对拍（同一输入字节串 → 双方各自计算/
+> 校验，比对一致才算通过），不得只各测各的。文本契约的字段级歧义（覆盖
+> 范围、字节序、置零参与等）只有字节级对拍能暴露——真板实证：校验和覆盖
+> 口径歧义导致联调全帧失败。KAT 向量随证据归档。
+
 ### 7b. 部署（8 步，缺一不可）
 
 `select → halt → rst -system → ps7_init → fpga -f → loadhw → dow → con`

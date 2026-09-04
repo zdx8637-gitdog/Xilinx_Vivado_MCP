@@ -389,6 +389,22 @@ POST 判定块文本随 7c 捕获一并保存；`evaluate_observation` 的 PASS 
 |------|----------|
 | 测试能力是设计交付物 | DFT / BIST 思想：[DFT & BIST 课程](https://smtnet.com/training/index.cfm?fuseaction=view_event&event_id=461&company_id=50816) |
 | 内部确定性测试源 + 汇端校验 | PRBS 图案生成/检查：[Xilinx 7 系列 GT 收发器手册](https://manualzz.com/doc/o/kus2n/xilinx-7-series-user-manual-83-h0_0011_07fe#14)；[LiteX Memory Testing and BIST](https://deepwiki.com/enjoy-digital/litex/7.2-uart-and-serial-communication) |
+
+## 12. AXI 握手缺陷模式库（开发自查清单）
+
+手写 AXI-Lite / AXI-Stream 从设备时，逐项自查以下同族缺陷（均真板实证）：
+
+| # | 缺陷模式 | 症状 | 修法 |
+|---|---------|------|------|
+| 1 | BVALID/RVALID 零宽脉冲（同拍置位+清除） | 主机永远等不到响应，总线挂死 | 响应置位后保持至 READY 握手完成 |
+| 2 | 同 always 块 last-write-wins 覆盖（`X<=1; if(RREADY) X<=0`） | 响应瞬时消失 | 用互斥分支，勿依赖赋值顺序 |
+| 3 | READY 早置位握手（对端 ARVALID 单拍即撤/早置 READY） | 握手错过、总线挂死 | 按「注册使能+保持」握手实现；仿真用对端行为模型验证 |
+| 4 | 多驱动信号（两个 always 块写同一 reg） | 仿真 last-write-wins 掩盖、综合 CRITICAL、真板 X/常量 | 单驱动块；synth CRITICAL=0 门禁 |
+| 5 | 无驱动输出（RRESP/BRESP 等） | 综合告警、真板 X | 响应总线恒 OKAY 显式驱动 |
+| 6 | X 传播（复位/未初始化状态进入握手逻辑） | 仿真 X、真板不定态 | 复位全清零 + 仿真 X 断言 |
+
+自查要求：上板前 synth 日志 CRITICAL WARNING=0；仿真用「对端行为模型」
+（含 ARVALID 单拍即撤、READY 早置位等真实对端时序）而非理想模型。
 | 事件计数监视（不看数据内容） | [AMBA AXI Performance Monitor IP](https://semiiphub.com/ip/datasheet/amba-axi-performance-monitor-7051)；[RMON 计数器](https://manual.yamaha.com/network/switches/swx2310p/td/en/Rev.2.02.31/oam_oam_rmon.html) |
 | 内嵌仪器标准化（借鉴思想） | [IEEE 1687-2014（IJTAG）](https://standards.ieee.org/ieee/1687/10896/)；[系统级 DFT 指南](https://www.jtag.com/system-dft-guidelines-boundary-scan-at-system-level/) |
 | 片上自检工程范例 | [OpenTitan DV 方法论](https://opensecura.googlesource.com/3p/lowrisc/opentitan/+show/9cae6d97d933f648fc7545dec65c7a25dc1f1a03/doc/ug/dv_methodology/index.md) |

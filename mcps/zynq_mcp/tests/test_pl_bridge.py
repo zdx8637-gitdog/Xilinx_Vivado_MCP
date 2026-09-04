@@ -1088,8 +1088,10 @@ class TestRegistrationConsistency:
         # make_external / synthesize → 103 (9 control + 94 domain). B12-N3:
         # + ps_start_hw_server → 104 (9 control + 95 domain). B12 fix round #2:
         # + pl_reset_run → 105 (9 control + 96 domain). B13-M1: workflow_rollback
-        # + workflow_resume_from → 107 (11 control + 96 domain).
-        assert len(ALL_TOOLS) == 107
+        # + workflow_resume_from → 107 (11 control + 96 domain). B13-M2:
+        # platform_package_user_ip + platform_set_bd_object_property → 109
+        # (11 control + 98 domain).
+        assert len(ALL_TOOLS) == 109
 
 
 # ── _execute bridge injection (production CommandRunner path) ─────────────

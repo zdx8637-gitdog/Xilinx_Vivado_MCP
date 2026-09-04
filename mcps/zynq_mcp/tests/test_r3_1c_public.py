@@ -251,7 +251,8 @@ class TestPublicMCP:
                         # B12-N3: ps_start_hw_server → 104 total (9 control + 95 domain).
                         # B12 fix round #2: pl_reset_run → 105 total (9 control + 96 domain).
                         # B13-M1: workflow_rollback/workflow_resume_from → 107 total (11 control + 96 domain).
-                        assert len(names) == 107
+                        # B13-M2: platform_package_user_ip/platform_set_bd_object_property → 109 total (11 control + 98 domain).
+                        assert len(names) == 109
                         pl_in = [n for n in names if n.startswith("pl_")]
                         # B07 registered 26 PL bridge tools on top of
                         # pl_generate_system_top. Every registered pl_* tool

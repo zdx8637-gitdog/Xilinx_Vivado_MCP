@@ -25,7 +25,7 @@
 
 ### M2. 平台域原子覆盖缺口
 - 现象：① 无自定义 RTL 打包/用户 IP 仓库注册原子 → 自研引擎只能走「PL 域工程 + .bd 文件」旁支（B12 黑盒先例）；② 无 BD 端口属性（ASSOCIATED_BUSIF）原子 → BD 41-2559 validate 告警无法消；③ 无接口级 DATA_WIDTH 原子 → SmartConnect 32-bit 与 DMA 64-bit 不匹配被迫换 axi_interconnect；④ `make_bd_intf_pins_external` 派生名（M01_AXI→M01_AXI_0）与 make_external 校验名不一致 → EXTERNAL_PORT_CREATE_FAILED（fail-closed 正确但名称对不上）。
-- 修法：补 `platform_package_user_ip` / `platform_set_bd_port_property` / 接口宽度属性原子；make_external 派生名校验与 Vivado 实际命名对齐。
+- 修法：补 `platform_package_user_ip` / `platform_set_bd_object_property`（对象类型自动识别 port/pin/intf-pin，真 Vivado 实测：ASSOCIATED_BUSIF 只存在于 pin 不在 port）/ 接口宽度属性原子；make_external 派生名用 `get_bd_intf_ports -of_objects [get_bd_intf_nets ...]` 实采（真 Vivado 实测 S_AXI→S_AXI_0/S_AXI_1，pin 基名猜测必错）。
 
 ### M3. XSA 导出非字节确定
 - 现象：同一 BD 重导出 XSA 字节不同（含时间戳）→ manifest revision 漂移（P2：307130c4→6bf2e166）→ verify 失配，只能靠 HWH 逐项 + ps7_init 字节一致做结构等价证明。
@@ -77,3 +77,21 @@
 - 按项目**修复轮模式**执行：每条修法 = 一个修复轮（生产代码 + 测试 + 全量回归统计 + 宿主真实工具 gate），不挤占 Brick 进度，可与 B13-P3/P4 并行排期。
 - 建议分批：第一批（环合法化 M1 + 确定性 M3 + 幂等 M5）——直接消除「外科改 ledger」类风险；第二批（M2 原子补齐 + M4 同步）；第三批（Skill 四补，纯文档/纪律层，成本最低可最先做）。
 - 每条入 backlog 时登记：现象证据、受影响工具/章节、验收测试设计。
+
+## 五、实施状态（修复轮追踪，全部进 `framework-iteration` 分支）
+
+| 条目 | 修复轮 | 结论 |
+|------|--------|------|
+| M1 环合法化 | #1 (e4557a1) | ✅ `workflow_rollback`/`workflow_resume_from` + 下游 revision 失效 + workflow_history |
+| M5 重试语义 | #2 (033136b) | ✅ `dedup_lookup` 仅 SUCCEEDED 阻断重试，FAILED/CANCELLED 合法重试 |
+| M3 XSA 确定性 | #3 (41dc1d2) | ✅ `xsa_normalize.py` zip 确定性重打包接入导出 |
+| M4 PS manifest 同步 | #4 (fc7bc59) | ✅ manifest 选取以磁盘 platform.xsa 哈希为真相优先 |
+| M5b define 幂等 | #5 (ece4dcb) | ✅ compile_app 容忍 XSCT「already contains the item」（真机探测验证） |
+| M2 平台原子 + S1–S4 | #6 | ✅ 见下 |
+
+修复轮#6 细节（M2 四子项，全部经真实 Vivado 2023.1 探测验证）：
+
+- ① 用户 IP 打包/仓库注册 → `platform_package_user_ip`：**两段式**——打包在一次性 `vivado -mode batch` 子进程（会话内 create_project 会关闭打开的设计工程并丢弃内存 BD，P0 级风险），注册在会话内非破坏追加 ip_repo_paths + update_ip_catalog + VLNV 回读。真实 Vivado 证据：ipx 打包→VLNV 回读→BD 内实例化闭环 PASS；重复打包幂等。
+- ②③ 端口/引脚属性 → `platform_set_bd_object_property`：对象类型自动识别 port→pin→intf-pin。真实 Vivado 实测：`CONFIG.FREQ_HZ` 端口/引脚可写可回读；**ASSOCIATED_BUSIF 真实家在 IP 时钟引脚（bd_ports 上不存在，BD 41-1642）**；axi_interconnect `S00_AXI DATA_WIDTH` 只读（CRITICAL WARNING + 空回读 → 原子 fail-closed）。
+- ④ make_external 派生名 → 用 `get_bd_intf_ports -of_objects [get_bd_intf_nets -of_objects <pin>]` 实采（pin 直查匹配为空，BD 5-233）；真实 Vivado 实测 axi_gpio_0/S_AXI→S_AXI_0、axi_gpio_1/S_AXI→S_AXI_1，pin 基名猜测必错。
+- S1–S4 → skills/zynq_dev：5_domain_implementation（S1 修复必配回归 + S2 综合 CRITICAL=0 门禁/仿真 X 检查）、7_deployment_observation（S4 双端字节级 KAT 对拍）、appendix_mechanics（S3 §12 AXI 握手缺陷模式库）。
