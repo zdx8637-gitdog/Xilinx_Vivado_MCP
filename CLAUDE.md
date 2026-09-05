@@ -16,6 +16,15 @@ AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）
 - **项目外证据工作区（只读归档）**：`D:\_b13_external\agent1_20260829\`（P0–P2 白盒参照）、`agent1_p4_20260904\`（P4 白盒，evidence/FINDINGS.md）、`agent2_p4_20260904\`（P4 黑盒，FINAL_REPORT/LESSONS_LEARNED/acceptance_summary）；测试智能体在这些项目外工作区运行，**不加载本文件**——其规范由各自 WB/AGENT2_PROMPT + 冻结基线文档承载
 - 下面「AI Agent 驱动 Zynq-7020 项目规则」是冻结的工作纪律，任何实现/汇报必须遵守。
 
+## ⛔ 泛化红线（每次上下文压缩恢复后，动手改 Skill/MCP 前第一自查）
+
+`skills/zynq_dev/` 与 `mcps/` 是**面向任意 Zynq 工程的通用框架资产**。上下文丢失后极易被当前 Brick 的项目实例带偏而特化——因此：
+
+1. **项目特化禁入 Skill/MCP**：外设料号（如某 ADC 型号）、板卡型号、Brick 名、项目上位机口径、版本串约定、项目工具名——一律只进项目文档（`docs/development/tests/<brick>_*`）或项目 PROMPT，写入 Skill/MCP 视为违规。
+2. **回流先过泛化滤网**：从当前项目学到的经验要进 Skill 前，先把项目名词抽象成通用模式（对照 appendix_mechanics §13：左侧是通用表述，右侧是抽象前禁止形态）；拿不准就放项目文档，不放进框架。
+3. **机器强制**：`test_o6_skill_contract.py::test_skill_mechanical_gate_zero_current_project_terms` 会扫描 Skill 全文件的项目特化词——加词即门禁失败。白名单例外必须显式论证（如「上位机」= 通用需求分工字段）。
+4. 修复轮改动 Skill 时，提交前跑 `python -m pytest mcps/zynq_mcp/tests/test_o6_skill_contract.py -q`。
+
 ## 常用命令
 
 ```bash

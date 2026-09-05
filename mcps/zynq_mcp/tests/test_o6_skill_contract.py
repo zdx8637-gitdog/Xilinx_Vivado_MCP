@@ -329,6 +329,33 @@ def test_skill_mechanical_gate_zero_project_terms() -> None:
     assert hits == {}
 
 
+def test_skill_mechanical_gate_zero_current_project_terms() -> None:
+    """泛化红线机器强制（B13-P4 强化）：Skill 不得携带任何**当前项目实例**
+    特化词——Brick 名、板卡型号、外设料号、智能体工作区名、项目工具文件名。
+    特化内容必须留在项目文档/PROMPT；回流 Skill 前先过泛化滤网。
+    允许的通用词（明确白名单）：上位机（作为需求分工字段）、ADC/DDR/TCP
+    等通用外设概念、Zynq 平台寄存器地址等平台事实。
+    """
+    text = _all_text()
+    patterns = {
+        "brick names": re.compile(r"\bB1[0-9]\b|\bB0[0-9]\b|\bB2[0-9]\b"),
+        "board model": re.compile(r"AX7020|ALINX", re.IGNORECASE),
+        "peripheral part number": re.compile(r"AD7606", re.IGNORECASE),
+        "agent workspace names": re.compile(
+            r"agent[123]_|agent[123]p4|agent1_p4|agent2_p4",
+            re.IGNORECASE),
+        "project tool filenames": re.compile(
+            r"PC_end|receiver\.py|uart_cmd|acceptance_summary",
+            re.IGNORECASE),
+    }
+    hits = {
+        name: sorted({match.group(0) for match in pattern.finditer(text)})
+        for name, pattern in patterns.items()
+        if pattern.search(text)
+    }
+    assert hits == {}
+
+
 def test_skill_connect_external_names_must_come_from_real_queries() -> None:
     """B11 阶段⑥.1 — decision rule in the platform atom template: pin/interface
     names used by the connect / make_external atoms must come from real object
