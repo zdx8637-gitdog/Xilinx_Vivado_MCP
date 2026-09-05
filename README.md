@@ -6,9 +6,10 @@
 
 ## 迭代到什么程度（2026-09-03）
 
-- **框架**：B00–B09 ✅ COMPLETE/FROZEN（统一 `zynq_mcp`、执行账本、单通道生命周期、公开 MCP 黑盒验收）；B11 ✅ COMPLETE（泛化框架黑盒验证：零外设字样 Skill + 6-LED 考题全链路 PASS）；**当前 MCP 共 105 工具**（9 control + 96 domain：platform/PL/PS 域）。Execution Observation：O1–O6 FROZEN，O7 R3 PASS。
-- **功能切片（真板）**：B12 ✅ A1（DMA 环回白盒+黑盒）/ A2（AD7606C-16 8 通道实采，盲测通道/频率/幅度三方法一致）——**B13 ✅ P0/P1/P2 COMPLETE**：TCP 高速上传核心链路（UART 指令 + TCP 25M 点整图上传 ≥2MB/s、TPG 全速门禁、ADC 三档 2k/100k/1M ±0.5% 实采 + L2 事件计数 1:1、断连重连含 RST 语义）；**P3 全链联调进行中**（上位机 GUI 已打通真板数据面，CRC 口径已钉死）。
-- **框架已知问题与加强方案**：[B13_exposed_framework_issues.md](docs/development/mcp/B13_exposed_framework_issues.md)（线性阶段机 vs 迭代开发、9 条 MCP/Skill 级问题、加强方案与分批实施路径）。
+- **框架**：B00–B09 ✅ COMPLETE/FROZEN（统一 `zynq_mcp`、执行账本、单通道生命周期、公开 MCP 黑盒验收）；B11 ✅ COMPLETE（泛化框架黑盒验证：零外设字样 Skill + 6-LED 考题全链路 PASS）；**当前 MCP 共 109 工具**（11 control + 98 domain：platform/PL/PS 域；B13 修复轮#1–#10 已合入 master，见 [B13_P4_MILESTONE.md](docs/development/tests/B13_P4_MILESTONE.md)）。Execution Observation：O1–O6 FROZEN，O7 R3 PASS。
+- **功能切片（真板）**：B12 ✅ A1（DMA 环回白盒+黑盒）/ A2（AD7606C-16 8 通道实采，盲测通道/频率/幅度三方法一致）——**B13 ✅ P4 完成（2026-09-05）**：TCP 扫描上传模拟全链黑白盒双过（UART 指令 + TCP 25M 点整图 2.087MB/s、TPG 全速门禁、ADC 三档 2k/100k/1M ±0.5%、L2 事件计数 1:1、STOP/覆盖/溢出/重连、KAT 双向量、verify 12/12）。
+- **验证方法论 v2**：[validation_methodology.md](docs/development/validation_methodology.md)（L0 契约/L1 功能/L2 状态/L3 公共面 + 行为偏离审计 + 黑盒终审——黑白盒任务书设计的长期纪律）。
+- **框架已知问题与加强方案**：[B13_exposed_framework_issues.md](docs/development/mcp/B13_exposed_framework_issues.md)（9 条 MCP/Skill 级问题全部经修复轮#1–#10 关闭，状态见文档 §五/§六）。
 - **协作纪律（长期）**：[subagent_communication_rules.md](docs/development/subagent_communication_rules.md)。
 
 ## 给外部使用者：最小上手
@@ -41,9 +42,9 @@
 | B00–B03 | ✅ COMPLETE/FROZEN | 项目整理、执行观察 O1–O6、板卡配置包、环境基线 |
 | B04 | ✅ COMPLETE/FROZEN | 统一 `zynq_mcp`：执行账本 + 单通道生命周期 + Vivado/XSCT Adapter |
 | B05–B09 | ✅ COMPLETE/FROZEN | GPIO 纵向切片全链路（白盒/阶段黑盒/公开 MCP 黑盒 PASS） |
-| B10/B11 | ✅ COMPLETE | O8 冻结包；泛化框架黑盒验证（去 GPIO 化 Skill + 105 工具 + 6-LED 考题，全六阶段闭环） |
+| B10/B11 | ✅ COMPLETE | O8 冻结包；泛化框架黑盒验证（去 GPIO 化 Skill + 109 工具 + 6-LED 考题，全六阶段闭环） |
 | B12 | ✅ A1/A2 COMPLETE | 数据采集链路：DMA 环回白盒+黑盒；AD7606C-16 8 通道真板实采（盲测一致） |
-| **B13** | **✅ P0/P1/P2 COMPLETE；P3 联调中** | TCP 扫描上传核心链：P0 协议互测 → P1 TPG 全速门禁（PL FIFO→DMA→DDR→TCP，8.5MB/s）→ P2 ADC 三档实采 + L2 计数 → P3 上位机全链联调 |
+| **B13** | **✅ P4 完成（2026-09-05）** | TCP 扫描上传模拟全链：P0 协议互测 → P1 TPG 全速门禁 → P2 ADC 三档实采 → P3 上位机联调 → **P4 黑白盒双过（2.087MB/s 整图零错、三档 ±0.5%、verify 12/12）+ 框架升级修复轮#1–#10 合入 master** |
 
 ## 核心组件（当前）
 
