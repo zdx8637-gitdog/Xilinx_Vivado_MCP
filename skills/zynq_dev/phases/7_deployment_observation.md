@@ -47,7 +47,7 @@ PS-PL 接口置于阻塞状态，先烧录 FPGA 会导致后续对 PL 地址空�
 handler。`loadhw` 必须在访问 PL 外设前执行——缺它，ARM 程序对 PL 地址空间的
 读写会访问无效地址。
 
-> **ps_load_hardware 已知限制（B13-F8 修复轮#8，真 Vivado 实测）**：
+> **ps_load_hardware 已知限制（真 Vivado 实测）**：
 > Vivado 2023.1 的 `write_hw_platform`/`write_hwdef` **不输出 ADDRESSING 段**
 > （BD 内存中 segments 存在亦然），hsi 据此合成的调试映射**非确定**——dow
 > 可能间歇报 `Blocked address ... Reserved address range`（同一 XSA 两次结果
