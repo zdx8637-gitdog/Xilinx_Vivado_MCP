@@ -409,3 +409,20 @@ POST 判定块文本随 7c 捕获一并保存；`evaluate_observation` 的 PASS 
 | 内嵌仪器标准化（借鉴思想） | [IEEE 1687-2014（IJTAG）](https://standards.ieee.org/ieee/1687/10896/)；[系统级 DFT 指南](https://www.jtag.com/system-dft-guidelines-boundary-scan-at-system-level/) |
 | 片上自检工程范例 | [OpenTitan DV 方法论](https://opensecura.googlesource.com/3p/lowrisc/opentitan/+show/9cae6d97d933f648fc7545dec65c7a25dc1f1a03/doc/ug/dv_methodology/index.md) |
 | 测试分层与上电自检 | [嵌入式测试指南](https://theembeddedkit.io/wp-content/uploads/2024/11/Embedded-testing-essential-guide-by-The-Embedded-Kit.pdf)；[FPGA 板级 bring-up 实例](https://github.com/heisaman/PLFM_RADAR/blob/main/docs/bring-up.html) |
+
+## 13. 已知问题与处理建议（B13-P4 真板实证回流）
+
+> 白盒/黑盒真板开发中沉淀的框架/工具/平台级已知问题。**遇到先查本表再行动**——
+> 这些坑都有确定性的处理路径，不要再花 token 重新发现。状态：✅ 已修复 /
+> ⚠️ 框架已告警未根治 / 📌 产品层待办。
+
+| # | 现象 | 成因/状态 | 处理建议 |
+|---|------|----------|---------|
+| 13.1 | `ps_mem_read` 返回空/失败 | ✅ 已修复（修复轮#8）：解析曾要求 `0x` 前缀而真实 xsdb mrd 输出不带（`E000102C: 0000000A`）。现返回 `0x%08X` 规范化字；空结果 fail-closed 报 `MEM_READ_NO_DATA` | 报 MEM_READ_NO_DATA = 地址可能未入映射/被阻断：先 `ps_load_hardware`，或手动 xsdb `mrd <addr> <len>` 对账；PL 寄存器读不到属正常（见 13.2） |
+| 13.2 | dow 间歇报 `Blocked address ... Reserved address range`；不 loadhw 时读 PL 寄存器报 "PL AXI slave ports access is not allowed" | ⚠️ Vivado 2023.1 的 `write_hw_platform`/`write_hwdef` **不输出 ADDRESSING 段**（BD 内存中 segments 存在亦然，真 Vivado 探针实证）→ hsi 合成映射非确定（同一 XSA 两次结果可不同）。`ps_load_hardware` 现会返回 `addressing_section=MISSING`+告警 | dow 受阻 → **跳过 ps_load_hardware**（DAP 默认身份映射对 ELF 运行足够）；需读 PL 寄存器时手动 xsdb `loadhw` 后读。别把它当故障反复重试 |
+| 13.3 | 改打包 IP 内容重打包后重建，PL 报 `manifest already exists with different semantic content` | ✅ 部分修复（修复轮#8）：PL 摘要已含 `.xci`+`ipshared/**`。⚠️ 仍未覆盖 ip_repo 根下 `component.xml`/`xgui` 与 PS 侧 `.cproject`（改 `-D` 宏摘要不变） | 改 IP 后确认 **ip_repo 与 .gen/ipshared 两份拷贝都刷新**（黑盒实证：只刷一份会消费陈旧产品）；改 `.cproject` 宏后顺手改一个真实源文件注释触发新摘要；#9 修复轮会补齐摘要覆盖 |
+| 13.4 | DMA 异常卡死后恢复，下次采集头部残留 ≤2 拍垃圾 | 📌 axis_register_slice 无受控复位（BD 层）。正常流程（START 复位+STOP 排水）已实测干净 | STOP 流程轮询 FIFO level==0 **排水后再 dma_stop**；后续 BD 变更时把 slice `aresetn` 接受控复位输出 |
+| 13.5 | READY 帧的 PL 版本标识与板上位流不一致 | 📌 固件手动维护版本常量，改 PL 后漏同步会谎报版本 | 改 PL 后**强制同步**固件版本串（对照 PL manifest `bitstream_sha256` 前 8 位）；将来用构建脚本从 manifest 自动生成 version.h |
+| 13.6 | 上位机 receiver 对 1–2 行测试报 rate FAIL | 📌 单行测试时长无法测量（duration null → rate_ok=false），属工具口径非下位机失败 | 验收判据只看整图（5000 行）rate；单行测试的 rate 字段忽略（判据按档位/行数区分） |
+| 13.7 | 仿真工具（pl_compile_sim 等）在 PL 构建会话内被拒 `ADAPTER_NOT_READY` | ⚠️ 仿真后端与 PL 构建（direct Vivado）后端互斥（F7a） | 仿真**独立会话**执行；位流紧跟 `pl_analyze_timing`（P7 相邻性，见 5_domain_implementation §5.2） |
+
