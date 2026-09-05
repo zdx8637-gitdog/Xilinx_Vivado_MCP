@@ -200,6 +200,14 @@ async def load_hardware(bridge: XsdbBridge, xsa_path: str) -> dict:
 
     Must be called AFTER ps_initialize_ps and BEFORE ps_download_elf.
     ``xsa_path`` must be the absolute path to the Platform XSA file.
+
+    B13-F8 修复轮#8 (黑盒实证): Vivado 2023.1 的 write_hw_platform /
+    write_hwdef **均不输出 ADDRESSING 段**（真 Vivado 探针实测：BD 内存中
+    有 2 个 segments，hwh/hdf 仍无 ADDRESSING）。hsi 据此合成非确定性
+    保留区映射 → dow 间歇报 "Blocked address ... Reserved address range"
+    （同一 XSA 两次结果不同）。本原子在 loadhw 前检查 XSA 的 hwh 是否含
+    ADDRESSING：缺失时照常 loadhw（对 ELF 运行无影响）但显式告警
+    addressing_section=MISSING——把静默陷阱变成确定性文档化行为。
     """
     if not isinstance(xsa_path, str) or not xsa_path.strip():
         return ps_error("INVALID_XSA_PATH",
@@ -211,14 +219,44 @@ async def load_hardware(bridge: XsdbBridge, xsa_path: str) -> dict:
     tid, err = await require_target_selected(bridge)
     if err:
         return err
+    addressing = _inspect_xsa_addressing(xsa_path)
     result = await safe_eval(bridge, templates.load_hardware(xsa_path))
     err2 = extract_bridge_error(result)
     if err2:
         return ps_error("LOAD_HW_FAILED",
                         f"loadhw failed: {err2[2]}",
                         details={"xsa_path": xsa_path})
-    return success(data={"status": "hardware_loaded", "xsa_path": xsa_path,
-                         "target_id": tid}).to_dict()
+    data = {"status": "hardware_loaded", "xsa_path": xsa_path,
+            "target_id": tid,
+            "addressing_section": addressing}
+    if addressing == "MISSING":
+        data["warning"] = (
+            "XSA 无 ADDRESSING 段（Vivado 2023.1 write_hw_platform 行为）——"
+            "hsi 调试映射可能非确定；若后续 dow 报 'Blocked address ... "
+            "Reserved address range'，跳过 ps_load_hardware（DAP 默认身份映射 "
+            "对 ELF 运行足够）；需读 PL 寄存器时手动 xsdb loadhw 仍可用")
+        data["recommended_action"] = "ON_DOW_BLOCKED_SKIP_LOADHW"
+    return success(data=data).to_dict()
+
+
+def _inspect_xsa_addressing(xsa_path: str) -> str:
+    """XSA 内 hwh 是否含 ADDRESSING 段。返回 PRESENT / MISSING / UNKNOWN
+    （zip 不可读或无 hwh 时 UNKNOWN——fail-open 的检测只做告知，不阻断）。"""
+    import zipfile
+    if not os.path.isfile(xsa_path):
+        return "UNKNOWN"
+    try:
+        with zipfile.ZipFile(xsa_path) as z:
+            hwhs = [n for n in z.namelist() if n.endswith(".hwh")]
+            if not hwhs:
+                return "UNKNOWN"
+            for n in hwhs:
+                content = z.read(n)
+                if b"ADDRESSING" in content:
+                    return "PRESENT"
+            return "MISSING"
+    except (zipfile.BadZipFile, OSError):
+        return "UNKNOWN"
 
 
 async def download_elf(bridge: XsdbBridge, elf_path: str) -> dict:

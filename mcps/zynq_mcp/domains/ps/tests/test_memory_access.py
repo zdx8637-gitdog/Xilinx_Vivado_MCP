@@ -123,6 +123,27 @@ async def test_mem_read_success(connected_bridge):
     assert connected_bridge._eval_history[-1] == "mrd 0x1000 4"
 
 
+async def test_mem_read_real_xsdb_format_no_0x_prefix(connected_bridge):
+    # B13-F8 修复轮#8: 真实 xsdb mrd 输出不带 0x 前缀
+    # ("E000102C:   0000000A"——主代理真板抓取)；解析必须接受并规范化。
+    connected_bridge.set_response(
+        "mrd 0xE000102C 1",
+        "E000102C:   0000000A")
+    resp = await ma.mem_read(connected_bridge, 0xE000102C, length=1)
+    assert resp["status"] == "success"
+    assert resp["data"]["words"] == ["0x0000000A"]
+
+
+async def test_mem_read_no_data_fails_closed(connected_bridge):
+    # B13-F8 修复轮#8: mrd 对被阻断/未映射地址静默返回空输出——
+    # 必须 fail-closed (MEM_READ_NO_DATA)，不得报 success+words=[]。
+    connected_bridge.set_response("mrd 0x40000000 2", "")
+    resp = await ma.mem_read(connected_bridge, 0x40000000, length=2)
+    assert resp["status"] == "error"
+    assert resp["error"]["details"]["reason_code"] == "MEM_READ_NO_DATA"
+    assert "ps_load_hardware" in resp["error"]["message"]
+
+
 async def test_mem_read_invalid_address(connected_bridge):
     resp = await ma.mem_read(connected_bridge, "zzz")
     assert resp["status"] == "error"

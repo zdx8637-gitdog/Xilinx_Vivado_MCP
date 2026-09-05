@@ -173,13 +173,14 @@ DOMAIN_TOOLS: list[Tool] = [
     # see domain_runner._PL_XSDB_TOOLS. Session context keys
     # (session_id/board_id/project_path) are stripped by the dispatcher before
     # the bridge function runs.
-    Tool(name="pl_create_project", description="Create a Vivado project (bridges old Vivado MCP create_project; project_dir is usually {session.project_path}/vivado/{name})",
+    Tool(name="pl_create_project", description="Create a Vivado project (bridges old Vivado MCP create_project; project_dir is usually {session.project_path}/vivado/{name}; optional ip_repo_paths registers user-IP repos before sources are added so packaged IPs do not open as LOCKED IPs)",
          inputSchema={"type": "object", "properties": {
              "name": {"type": "string"}, "part": {"type": "string"},
              "sources": {"type": "array", "items": {"type": "string"}},
              "constraints": {"type": "array", "items": {"type": "string"}},
              "project_dir": {"type": "string"}, "top": {"type": "string"},
-             "force": {"type": "boolean"}},
+             "force": {"type": "boolean"},
+             "ip_repo_paths": {"type": "array", "items": {"type": "string"}}},
              "required": ["name", "part", "sources", "constraints", "project_dir"]}),
     # B07 addendum: pl_generate_target generates the BD IP output products
     # (OOC netlists + constraints) that the BD wrapper references during

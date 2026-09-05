@@ -432,6 +432,30 @@ class TestToolBehaviors:
         assert "{{" not in tcl
 
     @pytest.mark.asyncio
+    async def test_create_project_registers_ip_repo_paths(self):
+        # B13-F8 修复轮#8: 打包用户 IP 的仓库必须注册进 PL 工程，否则 .bd
+        # 引用的 IP 打开成 LOCKED IP、generate_target 消费陈旧 .gen 产品。
+        bridge = _FakeVivadoBridge()
+        await pl_create_project(bridge, name="proj", part="xc7z020clg400-2",
+                                sources=["a.v"], constraints=["c.xdc"],
+                                project_dir="d:/p/vivado/proj",
+                                ip_repo_paths=[r"d:\p\ip_repo"])
+        tcl = bridge.calls[-1][0]
+        assert ("set_property ip_repo_paths [list {d:/p/ip_repo}] "
+                "[current_project]" in tcl)
+        assert "update_ip_catalog -rebuild" in tcl
+
+    @pytest.mark.asyncio
+    async def test_create_project_rejects_bad_ip_repo_paths(self):
+        bridge = _FakeVivadoBridge()
+        out = await pl_create_project(bridge, name="proj",
+                                      part="xc7z020clg400-2",
+                                      sources=[], constraints=[],
+                                      project_dir="d:/p/vivado/proj",
+                                      ip_repo_paths=["ok", ""])
+        assert out["status"] == "error"
+
+    @pytest.mark.asyncio
     async def test_reset_run_success(self):
         """B12 fix #2 (item #4A): pl_reset_run resets a failed run so the stage
         can be retried cleanly. On a present run, it must issue reset_run and

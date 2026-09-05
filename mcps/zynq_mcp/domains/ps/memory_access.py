@@ -127,7 +127,8 @@ async def mem_read(
     data.words is a list of hex strings; data.address the canonical hex.
 
     Errors: INVALID_ADDRESS, INVALID_LENGTH, NOT_CONNECTED,
-    NO_TARGET_SELECTED, MEM_READ_FAILED.
+    NO_TARGET_SELECTED, MEM_READ_FAILED, MEM_READ_NO_DATA (mrd 静默空输出
+    时 fail-closed——地址可能未入内存映射，先 ps_load_hardware 或 xsdb 对账).
     """
     addr = _normalize_address(address)
     if addr is None:
@@ -153,6 +154,18 @@ async def mem_read(
                         f"memory read failed: {err[2]}",
                         details={"address": addr, "length": length})
     words = _parse_mrd_words(result.get("data", ""))
+    # B13-F8 修复轮#8 (黑盒实证): mrd 对"未加入内存映射/被阻断"的地址会
+    # 静默返回空输出——此前 mem_read 报 success+words=[] (fail-open)，
+    # 黑盒被空结果误导多轮。空数据必须 fail-closed，并给出可操作提示
+    # （先 ps_load_hardware / 与 xsdb 手动 mrd 对账）。
+    if not words:
+        return ps_error("MEM_READ_NO_DATA",
+                        "mrd returned no data — the address may be outside "
+                        "the memory map (run ps_load_hardware first) or the "
+                        "access is blocked; cross-check with xsdb "
+                        f"'mrd {addr} {length}'",
+                        details={"address": addr, "length": length,
+                                 "raw": (result.get("data") or "")[:200]})
     return success(data={"address": addr, "length": length, "words": words,
                          "target_id": tid}).to_dict()
 
@@ -308,16 +321,29 @@ def _normalize_hex_value(token: str) -> str | None:
     return None
 
 
+# B13-F8 修复轮#8 (真板实证): xsdb mrd 的地址/字输出**不带 0x 前缀**
+# （如 "E000102C:   0000000A"）——原 _HEX_TOKEN_RE（要求 0x）永远匹配
+# 不到真实字，words 恒空（黑盒 ps_mem_read 空 words 的根因，主代理真板
+# 复现：raw 有数据、解析为空）。
+_MRD_WORD_RE = re.compile(r"(?:0[xX])?[0-9a-fA-F]+")
+
+
 def _parse_mrd_words(data: str) -> list[str]:
-    """Parse `mrd` output into a list of hex word strings.
+    """Parse `mrd` output into a list of canonical hex word strings.
 
     mrd prints '<address>: <word1> <word2> ...' per line; everything
-    before the first ':' is the address, the rest are words.
+    before the first ':' is the address, the rest are words. Words are
+    accepted with or without the 0x prefix (real xsdb omits it) and
+    canonicalized to ``0x%08X``.
     """
     words = []
     for line in (data or "").splitlines():
         if ":" not in line:
             continue
         _, _, after = line.partition(":")
-        words.extend(m.group(0) for m in _HEX_TOKEN_RE.finditer(after))
+        for m in _MRD_WORD_RE.finditer(after):
+            try:
+                words.append(f"0x{int(m.group(0), 16):08X}")
+            except ValueError:
+                continue
     return words

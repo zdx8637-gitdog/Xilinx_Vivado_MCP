@@ -192,6 +192,33 @@ class TestPublishManifest:
         assert os.path.isdir(pl_dir)
         assert os.path.isfile(path)
 
+    def test_pl_revision_changes_when_ip_product_changes(self, tmp_path):
+        # B13-F8 修复轮#8 (黑盒实证): 打包 IP 的内容不进 PL 输入摘要——
+        # 改引擎 RTL 重打包后重建，摘要不变 → 同名 revision 语义冲突。
+        # IP 产品文件 (.xci / ipshared) 变化必须改变 PL manifest revision。
+        root, snapshot, files = _pl_project(tmp_path)
+        ip_shared = _write(root, "bd/design.gen/sources_1/bd/design/"
+                                "ipshared/a1f7/engine.v", b"engine v1")
+        _write(root, "bd/design.gen/sources_1/bd/design/ip/engine_0/"
+                     "engine_0.xci", b"xci v1")
+        result = {"status": "success",
+                  "data": {"timing_met": True, "wns_ns": 0.0, "tns_ns": 0.0}}
+        p1 = publish_pl_build_manifest(snapshot, result, root,
+                                       tool_args={"path": files["bit"]})
+        assert p1 is not None
+        # IP 内容变化（engine v1 -> v2），其余全部不变
+        with open(ip_shared, "wb") as fh:
+            fh.write(b"engine v2")
+        p2 = publish_pl_build_manifest(snapshot, result, root,
+                                       tool_args={"path": files["bit"]})
+        assert p2 is not None and p2 != p1
+        with open(p2, encoding="utf-8") as fh:
+            m2 = json.load(fh)
+        ip_products = m2["revision_inputs"]["ip_products"]
+        assert any(e["path"].replace("\\", "/").endswith(
+            "ipshared/a1f7/engine.v") for e in ip_products)
+        assert validate_manifest(m2, "pl_build", resolve_root=root) == []
+
     def test_snapshot_missing_fields_skip(self, tmp_path):
         root, snapshot, files = _pl_project(tmp_path)
         pl_dir = os.path.join(root, "manifests", "pl")

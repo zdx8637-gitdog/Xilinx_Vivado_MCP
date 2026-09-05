@@ -186,6 +186,38 @@ def _discover_xdc(project_path: str):
     return rel, sha256_file(p)
 
 
+def _discover_ip_products(project_path: str) -> list[dict]:
+    """Packaged user-IP products consumed by the build: every ``*.xci`` and
+    every file under an ``ipshared`` directory below the project root, as
+    [{path, sha256}] sorted by path.
+
+    B13-F8 修复轮#8 (黑盒实证): 打包 IP 的**内容**不落在 PL 输入摘要里——
+    改引擎 RTL 重打包后重建，摘要不变 → 同名 revision 语义冲突
+    (manifest already exists with different semantic content)。IP 产品文件
+    (.xci / ipshared 拷贝) 是构建真实消费的输入，必须进摘要。
+    """
+    entries = []
+    seen = set()
+    for dirpath, dirnames, filenames in os.walk(project_path):
+        dirnames[:] = [d for d in dirnames if d not in _VIVADO_INTERNAL_DIRS]
+        rel_dir = os.path.relpath(dirpath, project_path).replace("\\", "/")
+        is_ipshared = rel_dir.split("/")[-1] == "ipshared" \
+            or "/ipshared/" in rel_dir or rel_dir.endswith("/ipshared")
+        for fn in filenames:
+            if not (fn.endswith(".xci") or is_ipshared):
+                continue
+            p = os.path.join(dirpath, fn)
+            if not os.path.isfile(p):
+                continue
+            rel = os.path.relpath(p, project_path).replace("\\", "/")
+            if rel in seen:
+                continue
+            seen.add(rel)
+            entries.append({"path": rel, "sha256": sha256_file(p)})
+    entries.sort(key=lambda e: e["path"])
+    return entries
+
+
 def _discover_elf(project_path: str, app_name: str):
     """First built ELF under {project}/ps/{app}/Debug or {project}/{app}/Debug.
     Returns (rel, sha) or None."""
@@ -375,6 +407,9 @@ def publish_pl_build_manifest(snapshot: dict, result: dict,
         "tool_versions": _tool_versions(plat),
         "source_files": _pl_source_entries(pp),
         "config_files": [{"path": xdc_rel, "sha256": xdc_sha}],
+        # B13-F8 修复轮#8: 打包 IP 产品必须进输入摘要（否则改 IP 内容重打包
+        # 后重建，摘要不变 → 同名 revision 语义冲突）。
+        "ip_products": _discover_ip_products(pp),
     }
     manifest_revision = compute_revision(revision_inputs)
     timing = _pl_timing(result) or _DEFAULT_PL_TIMING

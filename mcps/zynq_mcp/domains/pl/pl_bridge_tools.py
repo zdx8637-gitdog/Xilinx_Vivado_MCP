@@ -559,11 +559,21 @@ def _build_impl_run(to_step, open_run) -> str:
 # ═══════════════════════════════════════════════════════════════════
 
 async def pl_create_project(bridge, *, name, part, sources=None, constraints=None,
-                            project_dir=None, top=None, force=None) -> dict:
+                            project_dir=None, top=None, force=None,
+                            ip_repo_paths=None) -> dict:
     """Create a Vivado project via direct Tcl.
 
     project_dir is required (it is not derivable here); it is typically
     `{session.project_path}/vivado/{name}`.
+
+    ``ip_repo_paths`` (B13-F8 修复轮#8): optional list of user-IP repository
+    root dirs to register via ``set_property ip_repo_paths`` +
+    ``update_ip_catalog -rebuild`` BEFORE the sources are added. Without this,
+    a .bd referencing a packaged user IP opens with LOCKED IPs and
+    generate_target silently consumes stale .gen products (black-box
+    evidence: engine changes never reached the bitstream). Paths are
+    normalized to forward slashes (Tcl unbraced-substitution eats
+    backslashes — B13-M2 修复轮#6 实证).
     """
     if not isinstance(name, str) or not name.strip():
         return _invalid("name must be a non-empty string")
@@ -579,12 +589,22 @@ async def pl_create_project(bridge, *, name, part, sources=None, constraints=Non
         return _invalid("constraints must be a list of strings")
     if force is not None and not isinstance(force, bool):
         return _invalid("force must be a bool")
+    if ip_repo_paths is not None and (not isinstance(ip_repo_paths, list)
+                                      or not all(isinstance(p, str)
+                                                 and p.strip()
+                                                 for p in ip_repo_paths)):
+        return _invalid("ip_repo_paths must be a list of non-empty strings")
     # Preserve the old server's create_project default (force=True overwrites
     # an existing project); only an explicit False disables it.
     force = True if force is None else force
     force_flag = " -force" if force else ""
     cmds = [f"create_project{force_flag} {{{name}}} "
             f"{{{_tcl_path(project_dir)}}} -part {{{part}}}"]
+    if ip_repo_paths:
+        repos = " ".join(f"{{{_tcl_path(p)}}}" for p in ip_repo_paths)
+        cmds.append(f"set_property ip_repo_paths [list {repos}] "
+                    "[current_project]")
+        cmds.append("update_ip_catalog -rebuild")
     if sources:
         # Each path is its own braced Tcl word. An extra wrapping brace
         # (``{{a}}``) would collapse to the literal string ``{a}`` for a

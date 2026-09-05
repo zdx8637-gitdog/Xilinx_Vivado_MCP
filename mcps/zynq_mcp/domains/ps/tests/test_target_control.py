@@ -3,6 +3,8 @@
 Unit tests use FakeXsdbBridge (shared conftest). host_live tests require
 real xsdb + hw_server + a powered board and skip otherwise.
 """
+import zipfile
+
 import pytest
 
 from mcps.zynq_mcp.domains.ps import target_control as tc
@@ -13,6 +15,15 @@ pytestmark = pytest.mark.asyncio
 def _elf_path(tmp_path, name="app.elf", magic=b"\x7fELF"):
     p = tmp_path / name
     p.write_bytes(magic + b"\x02\x01\x01\x00" * 4)
+    return str(p)
+
+
+def _make_xsa(tmp_path, with_addressing):
+    p = tmp_path / "p.xsa"
+    hwh = (b"<HWH><ADDRESSING><SEG/></ADDRESSING></HWH>"
+           if with_addressing else b"<HWH><MODULES/></HWH>")
+    with zipfile.ZipFile(str(p), "w") as z:
+        z.writestr("design.hwh", hwh)
     return str(p)
 
 
@@ -372,6 +383,44 @@ async def test_ensure_arm_accessible_still_missing_after_reset(fake_bridge):
     assert resp["error"]["details"]["reason_code"] == "ARM_ACCESS_FAILED"
     assert resp["error"]["details"]["step"] == "verify"
     assert "rst -system" in fake_bridge._eval_history
+
+
+# ══════════════════════════════════════════════════════════════════════
+# -- load_hardware (B13-F8 修复轮#8: XSA ADDRESSING 自诊断) --
+# ══════════════════════════════════════════════════════════════════════
+
+async def test_inspect_xsa_addressing_present(tmp_path):
+    assert tc._inspect_xsa_addressing(_make_xsa(tmp_path, True)) == "PRESENT"
+
+
+async def test_inspect_xsa_addressing_missing(tmp_path):
+    assert tc._inspect_xsa_addressing(_make_xsa(tmp_path, False)) == "MISSING"
+
+
+async def test_inspect_xsa_addressing_unknown(tmp_path):
+    assert tc._inspect_xsa_addressing(str(tmp_path / "absent.xsa")) == "UNKNOWN"
+
+
+async def test_load_hardware_warns_when_addressing_missing(tmp_path,
+                                                          connected_bridge):
+    # Vivado 2023.1 write_hw_platform 不输出 ADDRESSING（真 Vivado 探针
+    # 实证）——loadhw 照常执行，但必须显式告警而非静默埋下非确定映射。
+    xsa = _make_xsa(tmp_path, with_addressing=False)
+    connected_bridge.set_response(f"loadhw {xsa}", "loaded")
+    resp = await tc.load_hardware(connected_bridge, xsa)
+    assert resp["status"] == "success"
+    assert resp["data"]["addressing_section"] == "MISSING"
+    assert "warning" in resp["data"]
+    assert resp["data"]["recommended_action"] == "ON_DOW_BLOCKED_SKIP_LOADHW"
+
+
+async def test_load_hardware_no_warning_when_present(tmp_path, connected_bridge):
+    xsa = _make_xsa(tmp_path, with_addressing=True)
+    connected_bridge.set_response(f"loadhw {xsa}", "loaded")
+    resp = await tc.load_hardware(connected_bridge, xsa)
+    assert resp["status"] == "success"
+    assert resp["data"]["addressing_section"] == "PRESENT"
+    assert "warning" not in resp["data"]
 
 
 # ══════════════════════════════════════════════════════════════════════
