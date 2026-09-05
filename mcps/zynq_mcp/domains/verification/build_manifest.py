@@ -54,9 +54,11 @@ __all__ = [
 
 # Vivado/Vitis generated-internal dir names excluded from source discovery so
 # build manifests list the user's RTL/XDC/C sources, not generated artifacts.
+# B13-F9 修复轮#9: .pkg_proj/.pkg_log 是 platform_package_user_ip 的一次性
+# 打包工作目录（每次重打包会重建，属过程产物）——ip_repo 内容哈希须排除。
 _VIVADO_INTERNAL_DIRS = frozenset({
     ".Xil", ".cache", ".gen", ".ip_user_files", ".runs", ".srcs", ".stx",
-    "vivado", "_ip",
+    "vivado", "_ip", ".pkg_proj", ".pkg_log",
 })
 
 # Default timing: grounded in the execution gate P7 (pl_generate_bitstream
@@ -187,24 +189,31 @@ def _discover_xdc(project_path: str):
 
 
 def _discover_ip_products(project_path: str) -> list[dict]:
-    """Packaged user-IP products consumed by the build: every ``*.xci`` and
-    every file under an ``ipshared`` directory below the project root, as
+    """Packaged user-IP products consumed by the build: every ``*.xci``,
+    every file under an ``ipshared`` directory, and the packaged-IP metadata
+    (``ip_repo/**/component.xml`` + ``ip_repo/**/xgui/**``), as
     [{path, sha256}] sorted by path.
 
     B13-F8 修复轮#8 (黑盒实证): 打包 IP 的**内容**不落在 PL 输入摘要里——
-    改引擎 RTL 重打包后重建，摘要不变 → 同名 revision 语义冲突
-    (manifest already exists with different semantic content)。IP 产品文件
-    (.xci / ipshared 拷贝) 是构建真实消费的输入，必须进摘要。
+    改引擎 RTL 重打包后重建，摘要不变 → 同名 revision 语义冲突。
+    B13-F9 修复轮#9: ip_repo 根下的 component.xml/xgui（打包元数据，不在
+    .gen 的 ipshared 拷贝里）同样必须进摘要——只改 IP 元数据/接口声明而
+    摘要不变，会漏掉重打包后的语义变化。
     """
     entries = []
     seen = set()
     for dirpath, dirnames, filenames in os.walk(project_path):
         dirnames[:] = [d for d in dirnames if d not in _VIVADO_INTERNAL_DIRS]
         rel_dir = os.path.relpath(dirpath, project_path).replace("\\", "/")
-        is_ipshared = rel_dir.split("/")[-1] == "ipshared" \
-            or "/ipshared/" in rel_dir or rel_dir.endswith("/ipshared")
+        parts = rel_dir.split("/")
+        is_ipshared = "ipshared" in parts
+        is_iprepo = "ip_repo" in parts
         for fn in filenames:
-            if not (fn.endswith(".xci") or is_ipshared):
+            if fn.endswith(".xci") or is_ipshared:
+                pass
+            elif is_iprepo and (fn == "component.xml" or "xgui" in parts):
+                pass
+            else:
                 continue
             p = os.path.join(dirpath, fn)
             if not os.path.isfile(p):
@@ -250,6 +259,30 @@ def _discover_xparameters(project_path: str):
     p = sorted(pool)[0]
     rel = os.path.relpath(p, project_path).replace("\\", "/")
     return rel, sha256_file(p)
+
+
+def _discover_cproject_entries(project_path: str) -> list[dict]:
+    """All ``.cproject`` files (Vitis/Eclipse build config — carries the
+    ``-D`` compile macros) as [{path, sha256}] sorted by path.
+
+    B13-F9 修复轮#9: 用 os.walk 而非 glob——Python glob 的 ``**`` 递归展开
+    **跳过点开头文件**（3.12 实测 ``**/*`` 不返回 ``.cproject``），glob 路径
+    会静默漏掉全部隐藏配置文件。
+    """
+    entries = []
+    for dirpath, dirnames, filenames in os.walk(project_path):
+        dirnames[:] = [d for d in dirnames if d not in _VIVADO_INTERNAL_DIRS]
+        for fn in filenames:
+            if fn != ".cproject":
+                continue
+            p = os.path.join(dirpath, fn)
+            if not os.path.isfile(p):
+                continue
+            entries.append({
+                "path": os.path.relpath(p, project_path).replace("\\", "/"),
+                "sha256": sha256_file(p)})
+    entries.sort(key=lambda e: e["path"])
+    return entries
 
 
 def _app_source_entries(project_path: str, app_name: str) -> list[dict]:
@@ -513,13 +546,16 @@ def publish_ps_build_manifest(snapshot: dict, result: dict,
             xparameters_addrs[f"XPAR_{str(key).upper()}_BASEADDR"] = str(entry["base"])
 
     source_files = _app_source_entries(pp, app_name)
+    # B13-F9 修复轮#9 (黑盒实证): .cproject 携带编译 -D 宏等构建配置——
+    # 改宏不换摘要 = 摘要失真（固件行为变了 manifest revision 却不变）。
+    config_files = _discover_cproject_entries(pp)
     revision_inputs = {
         "board_profile_sha256": bp_sha,
         "built_from_platform_revision": plat_rev,
         "platform_xsa_sha256": xsa_sha,
         "tool_versions": _tool_versions(plat),
         "source_files": source_files,
-        "config_files": [],
+        "config_files": config_files,
     }
     manifest_revision = compute_revision(revision_inputs)
 

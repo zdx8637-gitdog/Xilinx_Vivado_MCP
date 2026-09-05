@@ -219,6 +219,56 @@ class TestPublishManifest:
             "ipshared/a1f7/engine.v") for e in ip_products)
         assert validate_manifest(m2, "pl_build", resolve_root=root) == []
 
+    def test_pl_revision_changes_when_ip_metadata_changes(self, tmp_path):
+        # B13-F9 修复轮#9: ip_repo 根下 component.xml/xgui（打包元数据）
+        # 也必须进 PL 摘要——只改元数据/接口声明而摘要不变会漏掉重打包
+        # 后的语义变化（黑盒实证的"两份拷贝"问题的另一半）。
+        root, snapshot, files = _pl_project(tmp_path)
+        comp = _write(root, "ip_repo/user.org/user/engine/1.0/component.xml",
+                      b"<component v1/>")
+        _write(root, "ip_repo/user.org/user/engine/1.0/xgui/engine_v1_0.tcl",
+               b"# xgui v1")
+        _write(root, "ip_repo/.pkg_log/vivado.log", b"throwaway")  # 必须排除
+        result = {"status": "success",
+                  "data": {"timing_met": True, "wns_ns": 0.0, "tns_ns": 0.0}}
+        p1 = publish_pl_build_manifest(snapshot, result, root,
+                                       tool_args={"path": files["bit"]})
+        assert p1 is not None
+        with open(comp, "wb") as fh:
+            fh.write(b"<component v2/>")
+        p2 = publish_pl_build_manifest(snapshot, result, root,
+                                       tool_args={"path": files["bit"]})
+        assert p2 is not None and p2 != p1
+        with open(p2, encoding="utf-8") as fh:
+            m2 = json.load(fh)
+        ip_products = m2["revision_inputs"]["ip_products"]
+        paths = [e["path"].replace("\\", "/") for e in ip_products]
+        assert any(p.endswith("ip_repo/user.org/user/engine/1.0/component.xml")
+                   for p in paths)
+        assert any("xgui/engine_v1_0.tcl" in p for p in paths)
+        assert not any(".pkg_log" in p for p in paths)  # 一次性打包目录排除
+        assert validate_manifest(m2, "pl_build", resolve_root=root) == []
+
+    def test_ps_revision_changes_when_cproject_changes(self, tmp_path):
+        # B13-F9 修复轮#9: .cproject 携带 -D 编译宏，改宏不换摘要 = 摘要失真。
+        root, snapshot, files = _ps_project(tmp_path)
+        cproj = _write(root, "app/.cproject", b"<cproject v1/>")
+        result = {"status": "success", "data": {"app_name": "app", "built": True}}
+        p1 = publish_ps_build_manifest(snapshot, result, root,
+                                       tool_args={"app_name": "app"})
+        assert p1 is not None
+        with open(cproj, "wb") as fh:
+            fh.write(b"<cproject v2/>")
+        p2 = publish_ps_build_manifest(snapshot, result, root,
+                                       tool_args={"app_name": "app"})
+        assert p2 is not None and p2 != p1
+        with open(p2, encoding="utf-8") as fh:
+            m2 = json.load(fh)
+        cfg = m2["revision_inputs"]["config_files"]
+        assert any(e["path"].replace("\\", "/") == "app/.cproject"
+                   for e in cfg)
+        assert validate_manifest(m2, "ps_build", resolve_root=root) == []
+
     def test_snapshot_missing_fields_skip(self, tmp_path):
         root, snapshot, files = _pl_project(tmp_path)
         pl_dir = os.path.join(root, "manifests", "pl")
