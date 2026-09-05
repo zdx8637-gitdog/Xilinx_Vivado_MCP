@@ -74,7 +74,8 @@ development/tests/B09_gpio_agent2_blackbox_report.md
 | B09 | Agent2 在干净环境完成黑盒复现 | Tests | ✅ **COMPLETE（公开 MCP 纯黑盒 PASS）** |
 | B10 | 冻结 GPIO 纵向切片 v1，确定下一切片 | 全项目 | ✅ **O8 冻结包 COMPLETE（2026-08-14）；下一切片方向已由 B11 承接** |
 | B11 | 泛化框架黑盒验证：Skill/MCP 去 GPIO 化 + 6-LED 考题黑盒重验 | Skill + MCP + Tests | ✅ **COMPLETE（2026-08-16）：全六阶段闭环，Agent2 终验黑盒 PASS** |
-| B12 | 数据采集链路（AD7606C-16）：A1 DMA 环回验证 → A2 低速采集 + UART → B13 TCP 高速 | MCP + PL + PS | ⏳ **A1（DMA 环回）白盒+黑盒 PASS；A2 白盒：真板采集实测成功、盲测通道已识别，最终测量被 D-D 缺陷阻断 → 暂停待修复轮** |
+| B12 | 数据采集链路（AD7606C-16）：A1 DMA 环回验证 → A2 低速采集 + UART → B13 TCP 高速 | MCP + PL + PS | ✅ **A1（DMA 环回）白盒+黑盒 PASS；A2 白盒真板采集实测成功 + 黑盒（B 模式，2026-08-29）从公开契约独立复现全流程并真实验收 PASS（CH6、9.9765Hz、Vpp 8820 LSB 三方对账一致）** |
+| B13 | DMA + lwIP TCP 高速扫描上传模拟（5000×5000 CH6 三档 2k/100k/1M） | MCP + PL + PS | ✅ **P4 完成（2026-09-05）：白盒 PASS（F1–F8 发现）+ 黑盒 PASS（契约 v0.5 全判据机读通过 2.087MB/s/三档±0.5%/L2 1:1/verify 12/12）；框架升级修复轮#1–#10 合入 master；里程碑 [B13_P4_MILESTONE.md](development/tests/B13_P4_MILESTONE.md)** |
 
 ## 5. 逐 Brick 交付与门禁
 
@@ -371,7 +372,7 @@ Agent2 只获得：需求、统一 Skill、已注册的 zynq_mcp、板卡配置�
 
 - **B12-A1**：DMA 数据通路环回验证——图案 → DMA → DDR3 → 读回逐字节校验 → UART 机读判定（`DMA_LOOP_PASS/FAIL`）。无需新硬件、无需自定义 PL RTL（PS 驱动简单模式环回）、预期零新增 MCP 工具。需求草案 [B12_a1_requirement_draft.md](../tests/B12_a1_requirement_draft.md)。
 - **B12-A2（当前）**：AD7606C 低速采集 + UART 上行（模块已焊接、正弦已接入；FS=2000Hz、CONVST 门控；白盒暂停中，待 D-D 修复轮后重跑）。
-- **B13**：DMA + lwIP TCP 高速链路（1 MSPS 实时流，GEM0/RTL8211E；MCP 需补 GEM0 配置键与 BSP lwIP 库）。
+- **B13**：✅ **P4 完成（2026-09-05）**——DMA + lwIP TCP 高速链路（1 MSPS 实时流，GEM0/RTL8211E；MCP 补 GEM0 配置键与 BSP lwIP 库）黑白盒双过；框架升级修复轮#1–#10 合入 master。
 
 白盒参考（仅白盒可见，黑盒禁入）：厂商 `course_s2_vitis/15_dma_loopback`（axi_dma 简单模式 + HP0 + axis_data_fifo 环回拓扑）、`30_ad9238_lwip`（后续 B13 参考）。黑盒供给白名单 = 需求文档 + 板卡包公开事实面 + 泛化 Skill + 公开 MCP。
 
