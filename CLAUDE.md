@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）FPGA 开发框架。Claude 通过 MCP Server 操作 Vivado/XSim/Vitis 等 EDA 工具，按「三域四层 + Brick」计划增量构建。
 
 - 冻结顶层架构：[docs/architecture_ai_zynq7020.md](docs/architecture_ai_zynq7020.md) v2.3.1
-- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线）；B11 ✅ **COMPLETE（2026-08-16）**：泛化框架黑盒验证——Skill/MCP 去 GPIO 化 + 6-LED 考题，全六阶段闭环（输入冻结见 [B11_phase4_blackbox_basis.md](docs/development/tests/B11_phase4_blackbox_basis.md)）；B12 进行中（2026-08-24 立项）：数据采集链路（AD7606C-16）——**A1 DMA 环回白盒+黑盒 PASS（2026-08-25）**、**A2 白盒：真板采集实测成功（盲测通道已识别）；A2 v2 串行推进中——开发流程修复轮（D1/D-B/D-E/D-A/D-C）先行，随后白盒 v2（PL 环形缓冲 + UART 指令上传固定 1s×8 通道 + 8 通道波形图），通过后 A2 黑盒（用户授权自动推进，仅重大问题停止；2026-08-25）**、B13 TCP 高速后置；MCP 109 工具（B13-M2 修复轮#6 新增 `platform_package_user_ip`/`platform_set_bd_object_property`；此前 107 = B13-M1 修复轮#1 的 `workflow_rollback`/`workflow_resume_from`）。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；B11 规划：[docs/development/mcp/B11_plan.md](docs/development/mcp/B11_plan.md)）
+- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线）；B11 ✅ **COMPLETE（2026-08-16）**：泛化框架黑盒验证——Skill/MCP 去 GPIO 化 + 6-LED 考题，全六阶段闭环（输入冻结见 [B11_phase4_blackbox_basis.md](docs/development/tests/B11_phase4_blackbox_basis.md)）；B12 进行中（2026-08-24 立项）：数据采集链路（AD7606C-16）——**A1 DMA 环回白盒+黑盒 PASS（2026-08-25）**、**A2 白盒：真板采集实测成功（盲测通道已识别）；A2 v2 串行推进中——开发流程修复轮（D1/D-B/D-E/D-A/D-C）先行，随后白盒 v2（PL 环形缓冲 + UART 指令上传固定 1s×8 通道 + 8 通道波形图），通过后 A2 黑盒（用户授权自动推进，仅重大问题停止；2026-08-25）**、B13 TCP 高速后置；**B13 ✅ P4 完成（2026-09-05）：白盒 PASS（F1–F8 发现）+ 黑盒 PASS（5 缺陷修复、契约 v0.5 全判据机读通过、2.087MB/s、三档 ±0.5%、L2 1:1、verify 12/12）→ 框架升级修复轮#1–#10（M1 环合法化/M2 平台原子/M3 确定性/M4 元数据/M5 幂等/Skill 四补/黑白盒反馈/摘要覆盖/ADDRESSING 注入）已合入 master；验证方法论 v2（L0–L3 + 行为偏离审计，[validation_methodology.md](docs/development/validation_methodology.md)）+ 偏离审计器 tools/audit/bypass_audit.py；里程碑 [B13_P4_MILESTONE.md](docs/development/tests/B13_P4_MILESTONE.md)**；MCP 109 工具（11 control + 98 domain）。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；B11 规划：[docs/development/mcp/B11_plan.md](docs/development/mcp/B11_plan.md)）
 - Execution Observation：O1–O6 FROZEN，O7 R3 PASS，O8 冻结包已交付（2026-08-14）
 - 根目录是新的 core Git 仓库（分支 main，839 个文件）：基线 commit `4e0d148`，tag `o7r3-baseline-20260813` 锁定 O7 R3 基线；远端 origin = https://github.com/zdx8637-gitdog/Xilinx_Vivado_MCP（旧内容已按授权覆盖替换，原旧远程 HEAD `59f2abb` 已记录）。`Xilinx_Vivado_MCP/`、`Xilinx_Vitis_MCP/`、`zynq_platforms/` 三个旧仓库为 legacy/已出范围（保留在磁盘、各自独立且已停更的 Git 历史，不被新仓库跟踪）
 - 会话纪律速查（上下文压缩后必读）：[docs/development/B12_a2_working_discipline.md](docs/development/B12_a2_working_discipline.md)——零轮询/串行执行/盲测保密/缺陷口径/当前状态
@@ -20,13 +20,13 @@ AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）
 # 主测试套件（必须从项目根目录运行，勿 cd 进 mcps/）
 python -m pytest mcps
 
-# 非硬件回归（跳过需 EDA 工具或硬件的测试）：1483 passed / 1 skipped / 43 deselected / 0 failed（约 209 秒；1 skipped 为 B02 POSIX-only；43 deselected = 39 host_live + 4 device_live）
+# 非硬件回归（跳过需 EDA 工具或硬件的测试）：1499 passed / 1 skipped / 43 deselected / 0 failed（约 227 秒；1 skipped 为 B02 POSIX-only；43 deselected = 39 host_live + 4 device_live）
 python -m pytest mcps -m "not host_live and not device_live"
 
 # 单个测试
 python -m pytest mcps/zynq_mcp/tests/test_r1_gate.py -k <test_name>
 
-# 机械门禁用的收集统计（当前 1527 collected）
+# 机械门禁用的收集统计（当前 1543 collected）
 python -m pytest mcps --collect-only -q
 
 # 列出所有 pytest marker
