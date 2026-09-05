@@ -141,15 +141,22 @@ class TestAtomWiring:
         async def _fake_run_tcl(adapter, tcl, label):
             # Simulate Vivado emitting non-deterministic bytes each run —
             # zip-entry timestamps AND member-content timestamps (F6).
+            if "get_bd_addr_segs" in tcl:
+                # 地址映射查询（修复轮#8/#10 注入用）
+                return {"status": "success", "data": {
+                    "output": ("processing_system7_0/M_AXI_GP0 "
+                               "processing_system7_0/Data/SEG_engine_Reg "
+                               "0x40000000 0x1000")}}
             call_count["n"] += 1
             ts = f"run-{call_count['n']}"
-            entries = [("design.hwh", b"same-content"),
+            entries = [("design.hwh", b"<HWH><MODULES/></HWH>"),
                        ("xsa.json", b'{"generatedTimestamp": "' +
                         ts.encode() + b'"}'),
                        ("xsa.xml", b'<GenAppInfo TimeStamp="' +
                         ts.encode() + b'"/>')]
             _make_xsa(out, entries,
                       date_time=(2020 + call_count["n"], 1, 1, 0, 0, 0))
+            return {"status": "success", "data": {"output": ""}}
 
         monkeypatch.setattr(platform_atoms, "_run_tcl", _fake_run_tcl)
         r1 = asyncio.run(platform_export_hardware(_FakeAdapter(), path=out))
@@ -157,3 +164,55 @@ class TestAtomWiring:
         r2 = asyncio.run(platform_export_hardware(_FakeAdapter(), path=out))
         sha2 = r2["data"]["xsa_sha256"]
         assert sha1 == sha2  # same content → same normalized bytes → same sha
+        # 修复轮#8/#10: 注入的 ADDRESSING 必须落进主 hwh（同 map 两次一致）
+        with zipfile.ZipFile(out) as z:
+            hwh = z.read("design.hwh").decode("utf-8")
+        assert "<ADDRESSING>" in hwh
+        assert 'SEG_engine_Reg' in hwh
+        assert 'ABS="0x40000000"' in hwh
+
+
+class TestAddressingInjection:
+    def test_fragment_builds_segments_and_ranges(self):
+        from mcps.zynq_mcp.domains.platform.xsa_normalize import (
+            _addressing_fragment,
+        )
+        frag = _addressing_fragment({
+            "axi_dma_0": {"base": "0x40400000", "range": "0x00010000",
+                          "master": "processing_system7_0/M_AXI_GP0"},
+            "engine": {"base": "0x40000000", "range": "0x00001000",
+                       "master": "processing_system7_0/M_AXI_GP0"},
+        })
+        assert 'NAME="processing_system7_0/Data"' in frag
+        assert 'MASTERBUSINTERFACE="M_AXI_GP0"' in frag
+        assert 'SEG_axi_dma_0_Reg' in frag
+        assert 'ABS="0x40400000" RANGE="64K"' in frag
+        assert 'ABS="0x40000000" RANGE="4K"' in frag
+
+    def test_fragment_empty_map_returns_none(self):
+        from mcps.zynq_mcp.domains.platform.xsa_normalize import (
+            _addressing_fragment,
+        )
+        assert _addressing_fragment({}) is None
+        assert _addressing_fragment(None) is None
+
+    def test_normalize_injects_and_stays_deterministic(self, tmp_path):
+        p = str(tmp_path / "x.xsa")
+        _make_xsa(p, [("design.hwh", b"<HWH><MODULES/></HWH>")])
+        amap = {"engine": {"base": "0x40000000", "range": "0x00001000",
+                           "master": "processing_system7_0/M_AXI_GP0"}}
+        normalize_xsa(p, addressing_map=amap)
+        with zipfile.ZipFile(p) as z:
+            hwh = z.read("design.hwh").decode("utf-8")
+        assert "<ADDRESSING>" in hwh and 'SEG_engine_Reg' in hwh
+        first = Path(p).read_bytes()
+        normalize_xsa(p, addressing_map=amap)  # 幂等: 已注入不重复
+        assert Path(p).read_bytes() == first
+        assert hwh.count("<ADDRESSING>") == 1
+
+    def test_normalize_no_map_leaves_hwh_untouched(self, tmp_path):
+        p = str(tmp_path / "x.xsa")
+        _make_xsa(p, [("design.hwh", b"<HWH><MODULES/></HWH>")])
+        normalize_xsa(p)
+        with zipfile.ZipFile(p) as z:
+            assert b"<ADDRESSING>" not in z.read("design.hwh")

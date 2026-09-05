@@ -866,11 +866,22 @@ async def platform_export_hardware(adapter, *, path: str | None = None,
         raise XsaExportError(str(e))
     if not os.path.isfile(out_path):
         raise XsaExportError("XSA file not created")
+    # B13-F8 修复轮#8/#10: Vivado 2023.1 的 write_hw_platform 不输出
+    # ADDRESSING 段 → hsi 调试映射非确定（黑盒 dow 间歇受阻实证）。从 BD
+    # 内存态抓 address_map 注入 hwh（schema 经真板 hsi 验证）；BD 未开时
+    # 静默跳过（map 为空不注入，行为回到旧路径）。
+    addressing_map = {}
+    try:
+        addr_data = await _run_tcl(adapter, _ADDRESS_MAP_QUERY_TCL,
+                                   "query_address_map")
+        addressing_map = _parse_manifest_address_map(_tcl_output(addr_data))
+    except (AdapterError, TclError):
+        addressing_map = {}
     # B13-M3: deterministic normalization — content-equivalent exports must be
     # byte-identical so the manifest revision depends on CONTENT only (the
     # real-board manifest drift 307130c4 -> 6bf2e166 is thereby eliminated).
     from mcps.zynq_mcp.domains.platform.xsa_normalize import normalize_xsa
-    normalize_xsa(out_path)
+    normalize_xsa(out_path, addressing_map=addressing_map)
     return {"status": "success", "data": {
         "xsa_path": out_path,
         "xsa_sha256": _sha256_file(out_path),

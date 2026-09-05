@@ -36,6 +36,64 @@ _FIXED_DATE_TIME = (1980, 1, 1, 0, 0, 0)
 _FIXED_TIMESTAMP = "1980-01-01 00:00:00"
 
 
+def _human_range(value: str) -> str:
+    """RANGE 值人性化（hwh 惯例: 4K/64K/1G）。整除 1K 用 K，否则原样。"""
+    try:
+        n = int(value, 16) if str(value).lower().startswith("0x") \
+            else int(value)
+    except ValueError:
+        return str(value)
+    if n >= 1024 and n % 1024 == 0:
+        return f"{n // 1024}K"
+    return str(n)
+
+
+def _addressing_fragment(address_map: dict) -> str:
+    """从 manifest 形状的 address_map（{ip: {base, range, master}}）生成
+    hwh 的 <ADDRESSING> XML 片段。
+
+    schema 经真板验证（Vitis 2023.1 hsi 接受，loadhw rc=0 + 随后 DAP 可读
+    PL 寄存器）：ADDRESS_SPACE 按 master 分组（NAME=<cell>/Data、
+    MASTERBUSINTERFACE=<bus>），每段 SEGMENT NAME=SEG_<ip>_Reg +
+    ADDRESS_MAP ABS/RANGE。空 map → None（不注入）。"""
+    if not isinstance(address_map, dict) or not address_map:
+        return None
+    spaces = {}
+    for ip, entry in address_map.items():
+        if not isinstance(entry, dict):
+            continue
+        base = str(entry.get("base", ""))
+        rng = str(entry.get("range", ""))
+        master = str(entry.get("master", ""))
+        if not base or not rng or not master:
+            continue
+        spaces.setdefault(master, []).append((ip, base, rng))
+    if not spaces:
+        return None
+    parts = ["<ADDRESSING>"]
+    for master, segs in spaces.items():
+        cell = master.split("/")[0]
+        bus = master.split("/", 1)[1] if "/" in master else master
+        # 单个 master 的地址空间范围取覆盖区间的并集（上取整到 1G 边界）。
+        bases = [int(s[1], 16) for s in segs]
+        ends = [int(s[1], 16) + int(s[2], 16) for s in segs]
+        begin, end = min(bases), max(ends)
+        parts.append(
+            f'<ADDRESS_SPACE RANGE="1G" MASTERBUSINTERFACE="{bus}" '
+            f'BASENAME="Data" NAME="{cell}/Data" '
+            f'BEGIN="{hex(begin)}" END="{hex(end)}">')
+        for ip, base, rng in sorted(segs):
+            parts.append(
+                f'<SEGMENT NAME="SEG_{ip}_Reg">'
+                f'<ADDRESS_MAP ABS="{base}" RANGE="{_human_range(rng)}" '
+                f'USAGE="register" DELTAMAP="0x0" SUBTYPE="" '
+                f'OFFSET="0x0" GAP="0x00000000"/>'
+                f'</SEGMENT>')
+        parts.append("</ADDRESS_SPACE>")
+    parts.append("</ADDRESSING>")
+    return "".join(parts)
+
+
 def _normalize_xsa_json(data: bytes) -> bytes:
     """Replace every ``generatedTimestamp`` string value with the fixed
     timestamp and re-serialize deterministically (sorted keys, no extra
@@ -76,10 +134,18 @@ def _normalize_xsa_xml(data: bytes) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def normalize_xsa(path: str) -> None:
-    """In-place deterministic re-pack of an XSA zip. No-op if not a file."""
+def normalize_xsa(path: str, addressing_map: dict | None = None) -> None:
+    """In-place deterministic re-pack of an XSA zip. No-op if not a file.
+
+    ``addressing_map`` (B13-F8 修复轮#8/#10): manifest 形状的
+    {ip: {base, range, master}}。Vivado 2023.1 的 write_hw_platform /
+    write_hwdef **不输出 ADDRESSING 段**（真 Vivado 探针实证）→ hsi 调试
+    映射非确定、dow 间歇受阻。提供 map 时向主 hwh 注入合成 <ADDRESSING>
+    （schema 经真板 hsi 验证），loadhw 后 DAP 可确定读 PL 寄存器。
+    """
     if not isinstance(path, str) or not path or not os.path.isfile(path):
         return
+    fragment = _addressing_fragment(addressing_map)
     tmp = path + ".norm.tmp"
     try:
         with zipfile.ZipFile(path, "r") as zin:
@@ -92,6 +158,13 @@ def normalize_xsa(path: str) -> None:
                         data = _normalize_xsa_json(data)
                     elif name.endswith("xsa.xml"):
                         data = _normalize_xsa_xml(data)
+                    elif (fragment and name.endswith(".hwh")
+                          and "smc" not in name):
+                        hwh = data.decode("utf-8", "replace")
+                        if "<ADDRESSING" not in hwh and "</HWH>" in hwh:
+                            hwh = hwh.replace(
+                                "</HWH>", fragment + "</HWH>", 1)
+                            data = hwh.encode("utf-8")
                     info.date_time = _FIXED_DATE_TIME
                     info.comment = b""
                     info.extra = b""

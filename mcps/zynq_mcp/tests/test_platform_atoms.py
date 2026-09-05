@@ -840,9 +840,11 @@ class TestExportHardware:
         assert out["status"] == "success"
         assert out["data"]["xsa_path"] == str(proj / "platform.xsa")
         assert out["data"]["xsa_sha256"].startswith("sha256:")
-        tcl = _last_tcl(adapter)
-        assert "write_hw_platform -fixed -force" in tcl
-        assert str(proj / "platform.xsa") in tcl
+        # 修复轮#8/#10: export 现为 write_hw_platform + 地址映射查询两次
+        # 调用（查询在最后）——write 命令存在于任一调用中即可。
+        all_tcl = "\n".join(c[1]["command"] for c in adapter.calls)
+        assert "write_hw_platform -fixed -force" in all_tcl
+        assert str(proj / "platform.xsa") in all_tcl
 
     @pytest.mark.asyncio
     async def test_exports_to_explicit_path(self, tmp_path):
