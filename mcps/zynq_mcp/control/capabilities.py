@@ -131,6 +131,14 @@ DOMAIN_TOOLS: list[Tool] = [
          inputSchema={"type": "object", "properties": {}}),
     Tool(name="ps_read_elf_info", description="Read ELF header metadata (readelf -h equivalent)",
          inputSchema={"type": "object", "properties": {"elf_path": {"type": "string", "minLength": 1}}, "required": ["elf_path"]}),
+    # B13-F-12 修复轮#12: BSP 真值源查询（写前查库引用的通用能力）
+    Tool(name="ps_bsp_grep", description="Search the session BSP (include/ generated headers + libsrc/ driver headers and sources) for a pattern — the ground-truth library reference for the exact driver version the project compiles against (regex or literal substring; fail-closed BSP_NOT_FOUND when no BSP exists)",
+         inputSchema={"type": "object", "properties": {
+             "pattern": {"type": "string", "minLength": 1},
+             "scope": {"type": "string", "enum": ["headers", "sources", "all"]},
+             "max_hits": {"type": "integer", "minimum": 1, "maximum": 500},
+             "context_lines": {"type": "integer", "minimum": 0, "maximum": 20},
+         }, "required": ["pattern"]}),
     # B06 third batch — download + debug (registered post B05 freeze)
     Tool(name="ps_download_elf", description="JTAG download ELF to DDR (xsdb dow)",
          inputSchema={"type": "object", "properties": {"elf_path": {"type": "string", "minLength": 1}}, "required": ["elf_path"]}),
@@ -309,6 +317,8 @@ DOMAIN_TOOLS: list[Tool] = [
              "required": ["name", "part"], "additionalProperties": False}),
     Tool(name="platform_get_status", description="Query the open Vivado project name and BD cell count (query atom)",
          inputSchema={"type": "object", "properties": {}, "additionalProperties": False}),
+    Tool(name="platform_reopen_project", description="Reopen the Vivado project under {project_path}/vivado after worker death (F-01 recovery atom; idempotent, no stage advance; fails closed NO_PROJECT_XPR/REOPEN_FAILED)",
+         inputSchema={"type": "object", "properties": {}, "additionalProperties": False}),
     Tool(name="platform_add_ps7", description="Instantiate and configure the Zynq PS7 from the board ps7 preset (atom API)",
          inputSchema={"type": "object", "properties": {
              "preset_name": {"type": "string"}}, "additionalProperties": False}),
@@ -478,7 +488,8 @@ def build_capabilities(instance_role: str = "primary",
         "domains": {
             "platform":   {"implemented": 19, "planned": 14, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},  # B05-R2 atoms(14) + B11 ③.1 assign_addresses/make_external/synthesize(17) + B13-M2 package_user_ip/set_bd_object_property(19); platform_generate removed B11 phase 2
             "pl":         {"implemented": 27, "planned": 12, "status": "adapter_ready" if adapter_status == "ready" else "bridge_ready"},
-            "ps":         {"implemented": 49, "planned": 19, "status": "bridge_ready"},
+            # B13-F-12: ps implemented 计数机械派生（ps_ 前缀工具数），消除手工漂移
+            "ps":         {"implemented": sum(1 for t in DOMAIN_TOOLS if str(t.name).startswith("ps_")), "planned": 19, "status": "bridge_ready"},
             "control":    {"implemented": len(CONTROL_TOOLS), "total": len(CONTROL_TOOLS)},
             "observation": {"implemented": 1, "total": 4},
             "recovery":   {"implemented": 2, "total": 2},

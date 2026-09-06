@@ -1,0 +1,32 @@
+{
+  "hints": [
+    {
+      "hint_id": "hint-ps-mem-no-data",
+      "symptom_pattern": "MEM_READ_NO_DATA",
+      "advice": "读取地址可能未入内存映射或被阻断：先 ps_load_hardware，或手动 xsdb mrd 对账；PL 寄存器读不到属正常（见 Skill 附录 §13.1/§13.2）",
+      "source_ref": "skills/zynq_dev/appendix_mechanics.md §13.1",
+      "added_at": "2026-09-06"
+    },
+    {
+      "hint_id": "hint-pl-axi-access-not-allowed",
+      "symptom_pattern": "PL AXI slave ports access is not allowed|Blocked address",
+      "advice": "用新导出的 XSA 重新部署（platform_export_hardware 已自动注入 hwh ADDRESSING 段）；或跳过 loadhw（DAP 默认身份映射对 ELF 运行足够）",
+      "source_ref": "skills/zynq_dev/appendix_mechanics.md §13.2",
+      "added_at": "2026-09-06"
+    },
+    {
+      "hint_id": "hint-manifest-semantic-conflict",
+      "symptom_pattern": "manifest already exists with different semantic content",
+      "advice": "构建输入改了但摘要没变：确认 ip_repo 与 .gen/ipshared 两份拷贝都刷新；PS 侧确认 lscript.ld/makefile.init 已纳入摘要",
+      "source_ref": "skills/zynq_dev/appendix_mechanics.md §13.3",
+      "added_at": "2026-09-06"
+    },
+    {
+      "hint_id": "hint-adapter-not-ready",
+      "symptom_pattern": "ADAPTER_NOT_READY",
+      "advice": "仿真后端与 PL 构建后端互斥：仿真走独立会话执行",
+      "source_ref": "skills/zynq_dev/appendix_mechanics.md §13.7",
+      "added_at": "2026-09-06"
+    }
+  ]
+}

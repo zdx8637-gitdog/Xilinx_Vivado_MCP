@@ -101,6 +101,47 @@ async def platform_create_design(adapter, *, name: str, part: str,
                                           "project_dir": proj_dir}}
 
 
+async def platform_reopen_project(adapter, *, project_path: str) -> dict:
+    """Reopen the Vivado project after worker death (B13-F-01, 修复轮#12).
+
+    The public atom surface had no reopen path: when the EDA worker died
+    between platform atoms, the restarted Vivado starts with no open project
+    and every subsequent atom fails with "No open project" (chain-wide
+    failure). This atom discovers the project ``.xpr`` under
+    ``{project_path}/vivado/`` and opens it. Idempotent: reopening the
+    already-open project succeeds (Vivado replaces the current project).
+    Fails closed with NO_PROJECT_XPR when no ``.xpr`` exists, and with
+    REOPEN_FAILED when open_project leaves no open project. Does not advance
+    the stage machine (admitted only in PLATFORM_DESIGN).
+    """
+    if not isinstance(project_path, str) or not project_path.strip():
+        raise PlatformError("project_path must be a non-empty string",
+                            "INVALID_ARGUMENT")
+    vivado_dir = os.path.join(project_path, "vivado")
+    xprs = []
+    if os.path.isdir(vivado_dir):
+        for dirpath, dirnames, filenames in os.walk(vivado_dir):
+            for fn in filenames:
+                if fn.endswith(".xpr"):
+                    xprs.append(os.path.join(dirpath, fn))
+    if not xprs:
+        raise PlatformError(
+            f"No Vivado project (.xpr) found under {vivado_dir}",
+            "NO_PROJECT_XPR")
+    xpr = sorted(xprs)[0]
+    await _run_tcl(adapter, f"open_project {{{xpr}}}", "reopen_project")
+    verify = await _run_tcl(adapter,
+                            "puts [get_property NAME [current_project]]",
+                            "verify_reopen")
+    name = _tcl_output(verify).strip()
+    if not name:
+        raise PlatformError(
+            "Reopen failed: no open project after open_project",
+            "REOPEN_FAILED")
+    return {"status": "success", "data": {
+        "project_file": xpr, "project_name": name}}
+
+
 async def platform_get_status(adapter) -> dict:
     """Query the open Vivado project name and BD cell count (query atom).
 
@@ -1449,6 +1490,7 @@ async def platform_set_bd_object_property(adapter, *, bd_object, property,
 
 PLATFORM_ATOM_MAP: dict[str, object] = {
     "platform_create_design": platform_create_design,
+    "platform_reopen_project": platform_reopen_project,
     "platform_get_status": platform_get_status,
     "platform_add_ps7": platform_add_ps7,
     "platform_configure_ps7": platform_configure_ps7,
@@ -1474,7 +1516,8 @@ PLATFORM_ATOM_TOOL_NAMES: frozenset = frozenset(PLATFORM_ATOM_MAP.keys())
 # command atoms (routed through the CommandRunner with the VivadoAdapter
 # injected via the _pl_adapter marker — same path as PL bridge tools)
 PLATFORM_ATOM_COMMAND_TOOL_NAMES: frozenset = frozenset({
-    "platform_create_design", "platform_add_ps7", "platform_configure_ps7",
+    "platform_create_design", "platform_reopen_project", "platform_add_ps7",
+    "platform_configure_ps7",
     "platform_add_ip", "platform_connect_interface", "platform_connect_clock",
     "platform_connect_reset", "platform_set_address",
     "platform_assign_addresses", "platform_make_external",
@@ -1491,6 +1534,7 @@ PLATFORM_ATOM_QUERY_TOOL_NAMES: frozenset = frozenset({
 # context keys injected from the session for each command atom
 PLATFORM_ATOM_CONTEXT_ARGS: dict[str, tuple] = {
     "platform_create_design": ("project_path",),
+    "platform_reopen_project": ("project_path",),
     "platform_add_ps7": ("board_id",),
     "platform_configure_ps7": (),
     "platform_add_ip": (),

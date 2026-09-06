@@ -48,7 +48,7 @@ from mcps.zynq_mcp.domains.platform.platform_atoms import (
     PLATFORM_ATOM_MAP, PLATFORM_ATOM_TOOL_NAMES,
     PLATFORM_ATOM_COMMAND_TOOL_NAMES, PLATFORM_ATOM_QUERY_TOOL_NAMES,
     platform_create_design, platform_get_status,
-    platform_add_ps7, platform_configure_ps7,
+    platform_add_ps7, platform_configure_ps7, platform_reopen_project,
     platform_add_ip, platform_list_ips,
     platform_connect_interface, platform_connect_clock, platform_connect_reset,
     platform_set_address, platform_assign_addresses, platform_make_external,
@@ -523,6 +523,62 @@ class TestConnectReset:
 # ═══════════════════════════════════════════════════════════════════
 #  5. Address space
 # ═══════════════════════════════════════════════════════════════════
+
+class TestReopenProject:
+    @pytest.mark.asyncio
+    async def test_reopens_discovered_xpr_f01(self, tmp_path):
+        """B13-F-01 修复轮#12: worker 消亡后重开工程的公开原子——发现
+        {project_path}/vivado/**/*.xpr 并 open_project，幂等。"""
+        adapter = _FakeAdapter([{"output": ""}, {"output": "bd_proj"}])
+        xpr = tmp_path / "vivado" / "bd" / "bd_bd.xpr"
+        xpr.parent.mkdir(parents=True, exist_ok=True)
+        xpr.write_text("<?xml version='1.0'?>", encoding="utf-8")
+        out = await platform_reopen_project(adapter,
+                                            project_path=str(tmp_path))
+        assert out["status"] == "success"
+        assert out["data"]["project_name"] == "bd_proj"
+        assert out["data"]["project_file"] == str(xpr)
+        tcls = [c[1]["command"] for c in adapter.calls]
+        assert tcls[0] == f"open_project {{{str(xpr)}}}"
+        assert "get_property NAME [current_project]" in tcls[1]
+
+    @pytest.mark.asyncio
+    async def test_reopen_idempotent_f01(self, tmp_path):
+        adapter = _FakeAdapter([{"output": ""}, {"output": "bd_proj"},
+                                {"output": ""}, {"output": "bd_proj"}])
+        xpr = tmp_path / "vivado" / "bd" / "bd_bd.xpr"
+        xpr.parent.mkdir(parents=True, exist_ok=True)
+        xpr.write_text("xpr", encoding="utf-8")
+        r1 = await platform_reopen_project(adapter, project_path=str(tmp_path))
+        r2 = await platform_reopen_project(adapter, project_path=str(tmp_path))
+        assert r1["status"] == "success"
+        assert r2["status"] == "success"
+        assert r1["data"] == r2["data"]
+
+    @pytest.mark.asyncio
+    async def test_reopen_no_xpr_fails_closed_f01(self, tmp_path):
+        with pytest.raises(PlatformError) as ei:
+            await platform_reopen_project(_FakeAdapter(),
+                                          project_path=str(tmp_path))
+        assert ei.value.reason_code == "NO_PROJECT_XPR"
+
+    @pytest.mark.asyncio
+    async def test_reopen_bad_project_path_fails_closed_f01(self):
+        with pytest.raises(PlatformError) as ei:
+            await platform_reopen_project(_FakeAdapter(), project_path="   ")
+        assert ei.value.reason_code == "INVALID_ARGUMENT"
+
+    @pytest.mark.asyncio
+    async def test_reopen_no_open_project_after_tcl_fails_closed_f01(
+            self, tmp_path):
+        adapter = _FakeAdapter([{"output": ""}, {"output": ""}])
+        xpr = tmp_path / "vivado" / "bd" / "bd_bd.xpr"
+        xpr.parent.mkdir(parents=True, exist_ok=True)
+        xpr.write_text("xpr", encoding="utf-8")
+        with pytest.raises(PlatformError) as ei:
+            await platform_reopen_project(adapter, project_path=str(tmp_path))
+        assert ei.value.reason_code == "REOPEN_FAILED"
+
 
 class TestSetAddress:
     @pytest.mark.asyncio
@@ -1164,14 +1220,15 @@ class TestTclErrorClassification:
 # ═══════════════════════════════════════════════════════════════════
 
 class TestRegistrationConsistency:
-    def test_atom_count_is_19(self):
+    def test_atom_count_is_20(self):
         # B11 ③.1: 14 B05-R2 atoms + assign_addresses/make_external/synthesize
-        # = 17; B13-M2: platform_package_user_ip/platform_set_bd_object_property = 19
-        assert len(PLATFORM_ATOM_TOOL_NAMES) == 19
-        assert len(PLATFORM_ATOM_MAP) == 19
+        # = 17; B13-M2: platform_package_user_ip/platform_set_bd_object_property = 19;
+        # B13-F-01: platform_reopen_project = 20
+        assert len(PLATFORM_ATOM_TOOL_NAMES) == 20
+        assert len(PLATFORM_ATOM_MAP) == 20
         assert PLATFORM_ATOM_COMMAND_TOOL_NAMES | PLATFORM_ATOM_QUERY_TOOL_NAMES \
             == PLATFORM_ATOM_TOOL_NAMES
-        assert len(PLATFORM_ATOM_COMMAND_TOOL_NAMES) == 17
+        assert len(PLATFORM_ATOM_COMMAND_TOOL_NAMES) == 18  # B13-F-01: +platform_reopen_project (17→18)
         assert len(PLATFORM_ATOM_QUERY_TOOL_NAMES) == 2
 
     def test_every_atom_registered_in_capabilities(self):

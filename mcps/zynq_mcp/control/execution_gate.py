@@ -183,6 +183,11 @@ def _check_stage(tool_name, current, prev_op):
         # admitted only in PLATFORM_DESIGN, before platform_export_manifest
         # advances the frozen stage machine. None of them advances the stage.
         if current != "PLATFORM_DESIGN": return True
+    elif "platform_reopen_project" in t:
+        # B13-F-01 (修复轮#12): worker-death reopen atom — platform-chain
+        # recovery inside PLATFORM_DESIGN only; later-stage continuation goes
+        # through workflow_resume_from.
+        if current != "PLATFORM_DESIGN": return True
     elif "pl_generate_system_top" in t:
         if current != "PL_GENERATE": return True  # E003: PLATFORM_DESIGN→PL_BUILD skip rejected
     elif "pl_create_project" in t:

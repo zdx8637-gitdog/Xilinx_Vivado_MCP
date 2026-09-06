@@ -86,6 +86,8 @@ _QUERY_TOOLS = frozenset({
     "get_capabilities", "get_session_info", "get_operation_status",
     "wait_operation", "get_execution_state", "diagnose_execution",
     "verify_consistency", "evaluate_observation",
+    # B13-F-12: BSP ground-truth reference query (no Operation state machine)
+    "ps_bsp_grep",
 } | PLATFORM_ATOM_QUERY_TOOL_NAMES)  # B05-R2: platform_get_status, platform_list_ips
 _COMMAND_TOOLS = frozenset({"create_session", "close_session", "recover_execution",
                             "workflow_rollback", "workflow_resume_from"})
@@ -135,6 +137,44 @@ class ZynqDispatcher:
 
     def schemas(self): return list(ALL_TOOLS)
 
+    def annotate(self, contents):
+        """修复轮 #12 响应附注机制（server 出口调用）。
+
+        命中已知症状（通用层 known_issues.json + 项目层 evidence/hints.json，
+        即写即生效）时，在响应 JSON 的**顶层**追加独立 ``annotations``
+        字段；所有原始字段（status/data/error 等）原样不动——判定仍以原始
+        输出为准。加载/匹配失败一律静默降级为无附注，绝不破坏响应。
+        """
+        from mcp.types import TextContent
+        try:
+            from mcps.common.hints import load_hints, match_annotations
+            ctx = getattr(self, "_ledger", None)
+            pp = ((ctx.context or {}).get("project_path")
+                  if getattr(ctx, "context", None) is not None else None)
+            entries = load_hints(pp if isinstance(pp, str) and pp.strip() else None)
+        except Exception as e:
+            logger.warning("hints unavailable, annotation skipped: %s", e)
+            return contents
+        if not entries:
+            return contents
+        out = []
+        for c in contents:
+            if getattr(c, "type", None) != "text":
+                out.append(c)
+                continue
+            raw = getattr(c, "text", "") or ""
+            try:
+                obj = json.loads(raw)
+            except ValueError:
+                out.append(c)
+                continue
+            ann = match_annotations(entries, raw)
+            if ann and isinstance(obj, dict):
+                obj["annotations"] = ann
+                raw = json.dumps(obj, ensure_ascii=False)
+            out.append(TextContent(type="text", text=raw))
+        return out
+
     async def dispatch(self, tool_name: str, arguments: dict, is_primary: bool) -> list:
         if not isinstance(arguments, dict):
             return _text(error("arguments must be a JSON object", code="INVALID_ARGUMENT").to_dict())
@@ -161,6 +201,8 @@ class ZynqDispatcher:
                     return _text(await _verify_consistency_query(arguments))
                 if tool_name == "evaluate_observation":
                     return _text(await _evaluate_observation_query(arguments))
+                if tool_name == "ps_bsp_grep":
+                    return _text(await _ps_bsp_grep_query(arguments, self))
                 if tool_name in PLATFORM_ATOM_QUERY_TOOL_NAMES:
                     # B05-R2: platform query atoms read the open Vivado design
                     # directly (no CommandRunner, no stage advance).
@@ -1320,6 +1362,32 @@ async def _evaluate_observation_query(args):
         uart_text=args.get("uart_text"),
         pass_marker=args.get("pass_marker"),
         fail_marker=args.get("fail_marker"),
+    )
+
+
+async def _ps_bsp_grep_query(args, disp):
+    """B13-F-12 修复轮#12 query handler: BSP 真值源查询（写前查库引用）。
+
+    Pure filesystem read under the session project_path — no XSCT, no
+    Operation state machine, always idempotent. session_id is required and
+    must be a non-empty string; project_path comes from the ledger session
+    context. A missing BSP is BSP_NOT_FOUND (never a silent empty result).
+    """
+    sid = args.get("session_id")
+    if not isinstance(sid, str) or not sid.strip():
+        return error("session_id must be a non-empty string", code="INVALID_ARGUMENT",
+                     details={"reason_code": "SESSION_ID_REQUIRED"}).to_dict()
+    ctx = disp._ledger.context or {}
+    pp = ctx.get("project_path")
+    if not isinstance(pp, str) or not pp.strip():
+        return error("session context has no project_path", code="INVALID_ARGUMENT",
+                     details={"reason_code": "PROJECT_PATH_UNKNOWN"}).to_dict()
+    return ps_bsp.bsp_grep(
+        project_path=pp,
+        pattern=args.get("pattern"),
+        scope=args.get("scope", "all"),
+        max_hits=args.get("max_hits", 50),
+        context_lines=args.get("context_lines", 2),
     )
 
 

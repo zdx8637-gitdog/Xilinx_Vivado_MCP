@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import glob
 import os
+import re
 import shutil
 import struct
 
@@ -52,6 +53,7 @@ __all__ = [
     "compile_app",
     "get_build_status",
     "read_elf_info",
+    "bsp_grep",
 ]
 
 _XSA_SUFFIX = ".xsa"
@@ -935,3 +937,135 @@ def _parse_elf_header(header: bytes, elf_path: str) -> dict:
         "machine": e_machine,
         "entry_point": hex(e_entry),
     }
+
+
+# ── BSP 真值源查询（修复轮#12: ps_bsp_grep）──────────────────────────────────
+
+_BSP_TEXT_EXTS = {".h", ".c", ".s", ".S", ".cpp", ".txt", ".tcl", ".ld",
+                  ".mss", ".cmake", ".mk"}
+_BSP_PRUNE_DIRS = {".git", "__pycache__", "Debug", "Release"}
+
+
+def _find_bsp_root(project_path: str) -> str | None:
+    """Locate the BSP root: the directory whose ``include/`` contains
+    ``xparameters.h`` and which has a sibling ``libsrc/`` (generated-headers
+    + driver sources). Returns the first match in walk order, else None."""
+    for dirpath, dirnames, filenames in os.walk(project_path):
+        dirnames[:] = [d for d in dirnames if d not in _BSP_PRUNE_DIRS]
+        inc = os.path.join(dirpath, "include")
+        if (os.path.isdir(inc) and os.path.isfile(os.path.join(inc, "xparameters.h"))
+                and os.path.isdir(os.path.join(dirpath, "libsrc"))):
+            return dirpath
+    return None
+
+
+def bsp_grep(project_path: str, pattern: str, scope: str = "all",
+             max_hits: int = 50, context_lines: int = 2) -> dict:
+    """Search the session BSP headers/sources for ``pattern`` (fix round #12).
+
+    Ground-truth library reference: the results come from the exact driver
+    version the project compiles against (include/ generated headers +
+    libsrc/ driver headers and implementations), never from external
+    knowledge files.
+
+    Args:
+        project_path: session project directory (the BSP is discovered under
+            it via include/xparameters.h).
+        pattern: regex or literal substring (an invalid regex falls back to a
+            literal search).
+        scope: "headers" (include/ only) | "sources" (libsrc/ only) | "all".
+        max_hits: bounded result cap (returned hits are truncated beyond it,
+            total_hits still reports the real match count).
+        context_lines: number of surrounding lines per hit.
+
+    Returns a ToolResponse-style dict:
+      success -> {"hits": [{file,line,text,context}], "total_hits": N,
+                  "truncated": bool, "bsp_root": <relpath>}
+      error   -> BSP_NOT_FOUND (no BSP under project_path) — never a silent
+                 empty result.
+    """
+    if not isinstance(project_path, str) or not project_path.strip() \
+            or not os.path.isdir(project_path):
+        return ps_error("BSP_NOT_FOUND",
+                        "project_path missing or not a directory",
+                        details={"reason_code": "BSP_NOT_FOUND"})
+    if not isinstance(pattern, str) or not pattern.strip():
+        return ps_error("INVALID_ARGUMENT", "pattern must be a non-empty string",
+                        details={"reason_code": "INVALID_ARGUMENT"})
+    if scope not in ("headers", "sources", "all"):
+        return ps_error("INVALID_ARGUMENT",
+                        "scope must be one of headers|sources|all",
+                        details={"reason_code": "INVALID_ARGUMENT"})
+    if isinstance(max_hits, bool) or not isinstance(max_hits, int) or max_hits <= 0:
+        return ps_error("INVALID_ARGUMENT", "max_hits must be a positive integer",
+                        details={"reason_code": "INVALID_ARGUMENT"})
+    max_hits = min(max_hits, 500)
+    if isinstance(context_lines, bool) or not isinstance(context_lines, int) \
+            or context_lines < 0:
+        return ps_error("INVALID_ARGUMENT",
+                        "context_lines must be a non-negative integer",
+                        details={"reason_code": "INVALID_ARGUMENT"})
+    context_lines = min(context_lines, 20)
+
+    root = _find_bsp_root(project_path)
+    if root is None:
+        return ps_error("BSP_NOT_FOUND",
+                        "no BSP found under project_path "
+                        "(expected include/xparameters.h + libsrc/)",
+                        details={"reason_code": "BSP_NOT_FOUND"})
+
+    try:
+        rx = re.compile(pattern)
+    except re.error:
+        rx = re.compile(re.escape(pattern))
+
+    search_dirs = []
+    if scope in ("headers", "all"):
+        search_dirs.append(os.path.join(root, "include"))
+    if scope in ("sources", "all"):
+        search_dirs.append(os.path.join(root, "libsrc"))
+
+    hits = []
+    total_hits = 0
+    truncated = False
+    for base in search_dirs:
+        if not os.path.isdir(base):
+            continue
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = [d for d in dirnames if d not in _BSP_PRUNE_DIRS]
+            for fn in sorted(filenames):
+                ext = os.path.splitext(fn)[1].lower()
+                if ext not in _BSP_TEXT_EXTS:
+                    continue
+                p = os.path.join(dirpath, fn)
+                try:
+                    with open(p, "r", encoding="utf-8", errors="replace") as fh:
+                        lines = fh.readlines()
+                except OSError:
+                    continue
+                for i, line in enumerate(lines):
+                    if not rx.search(line):
+                        continue
+                    total_hits += 1
+                    if len(hits) >= max_hits:
+                        truncated = True
+                        continue
+                    lo = max(0, i - context_lines)
+                    hi = min(len(lines), i + context_lines + 1)
+                    context = "".join(lines[lo:hi]).rstrip("\n")
+                    hits.append({
+                        "file": os.path.relpath(p, root).replace("\\", "/"),
+                        "line": i + 1,
+                        "text": line.rstrip("\n"),
+                        "context": context,
+                    })
+                    if len(hits) >= max_hits and total_hits > len(hits):
+                        truncated = True
+
+    rel_root = os.path.relpath(root, project_path).replace("\\", "/")
+    return success(data={
+        "bsp_root": rel_root,
+        "hits": hits,
+        "total_hits": total_hits,
+        "truncated": truncated,
+    }).to_dict()

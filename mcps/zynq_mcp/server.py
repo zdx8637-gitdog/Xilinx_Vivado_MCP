@@ -269,7 +269,9 @@ async def _main():
                 return [TextContent(type="text", text=json.dumps({
                     "status":"error","error":{"code":"INVALID_ARGUMENT",
                     "message":"arguments must be a JSON object"}}))]
-            return await dispatcher.dispatch(name, arguments, True)
+            result = await dispatcher.dispatch(name, arguments, True)
+            # 修复轮 #12: 响应附注（已知症状 → 独立 annotations 字段）
+            return dispatcher.annotate(result)
         async with stdio_server() as (read, write):
             await server.run(read, write, server.create_initialization_options())
     except InstanceGuardFatalError as e:

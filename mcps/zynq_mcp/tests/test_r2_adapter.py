@@ -753,7 +753,7 @@ class TestR2Adapter:
                     async with ClientSession(r,w) as s:
                         await s.initialize()
                         caps=json.loads((await s.call_tool("get_capabilities",{})).content[0].text)
-                        assert caps["status"]=="success" and caps["data"]["total_tools"]==109  # B13-M2: +platform_package_user_ip/+platform_set_bd_object_property → 109 (11 control + 98 domain)
+                        assert caps["status"]=="success" and caps["data"]["total_tools"]==111  # B13-F-12/F-01: +ps_bsp_grep/+platform_reopen_project → 111 (11 control + 100 domain)
                 await asyncio.sleep(1.5)
                 g2=InstanceGuard(rt,"ws-r2-check")
                 try:g2.determine_role();assert g2.is_primary

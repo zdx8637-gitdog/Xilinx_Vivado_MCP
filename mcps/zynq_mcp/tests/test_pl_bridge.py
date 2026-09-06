@@ -1114,8 +1114,10 @@ class TestRegistrationConsistency:
         # + pl_reset_run → 105 (9 control + 96 domain). B13-M1: workflow_rollback
         # + workflow_resume_from → 107 (11 control + 96 domain). B13-M2:
         # platform_package_user_ip + platform_set_bd_object_property → 109
-        # (11 control + 98 domain).
-        assert len(ALL_TOOLS) == 109
+        # (11 control + 98 domain). B13-F-12: ps_bsp_grep → 110
+        # (11 control + 99 domain). B13-F-01: platform_reopen_project → 111
+        # (11 control + 100 domain).
+        assert len(ALL_TOOLS) == 111
 
 
 # ── _execute bridge injection (production CommandRunner path) ─────────────
