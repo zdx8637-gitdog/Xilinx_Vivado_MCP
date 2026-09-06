@@ -279,9 +279,14 @@ class TestSecondInstance:
 
                         r2=subprocess.run([sys.executable,"-m","mcps.zynq_mcp.server"],
                             capture_output=True,text=True,timeout=15,env=os.environ)
-                        assert r2.returncode==0, f"Expected exit 0 got {r2.returncode}"
-                        combined=(r2.stdout or "")+(r2.stderr or "")
-                        assert "INSTANCE_ALREADY_RUNNING" in combined, f"Missing: {combined[:200]}"
+                        # B13-F-06 修复轮#12: 次实例以非零码退出（启动脚本可
+                        # 检测冲突），诊断只走 stderr——stdout 保留给 JSONRPC。
+                        # 旧契约断言 exit 0 → 新契约 exit 1（缺陷要求明确错误码）。
+                        assert r2.returncode==1, f"Expected exit 1 got {r2.returncode}"
+                        assert "INSTANCE_ALREADY_RUNNING" in (r2.stderr or ""), \
+                            f"diagnostic must go to stderr: {(r2.stdout or '')[:200]}"
+                        assert "INSTANCE_ALREADY_RUNNING" not in (r2.stdout or ""), \
+                            "stdout must stay JSONRPC-clean"
 
                         d3=await _call(prime,"get_execution_state")
                         assert d3["data"]["ledger_sequence"] == seq_before, \

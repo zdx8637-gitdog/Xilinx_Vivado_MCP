@@ -387,6 +387,53 @@ class TestCompileApp:
         assert f"cd {{" in make_tcl
         assert "myapp/Debug" in make_tcl.replace("\\", "/")
 
+    async def test_compile_app_make_fallback_uses_explicit_all_target_f12(
+            self, tmp_path, monkeypatch):
+        """B13-F12 修复轮#12: 回退 make 必须显式传 `all` 目标——Vitis 生成的
+        Debug/makefile 里 `-include $(C_DEPS)` 引入的 .d 文件带显式 src/*.o
+        目标，裸 make 默认目标变成第一个 .o（只建一个对象即 exit 0、无 ELF、
+        无输出）。"""
+        make_exe = "D:/Xilinx/Vivado/2023.1/gnuwin/bin/make.exe"
+        monkeypatch.setattr(ps_bsp, "_find_make", lambda: make_exe)
+
+        class _MakeBridge(FakeXsctBridge):
+            async def eval(self, tcl, timeout_s=None, tolerate_stderr=False):
+                self.calls.append((tcl, timeout_s, tolerate_stderr))
+                if "exec" in tcl:
+                    d = os.path.join(self.workspace, "myapp", "Debug")
+                    os.makedirs(d, exist_ok=True)
+                    _write_elf(os.path.join(d, "app.elf"))
+                return dict(_OK)
+
+        bridge = _MakeBridge(workspace=str(tmp_path))
+        r = await ps_bsp.compile_app(bridge, "myapp")
+        assert r["status"] == "success", r
+        make_tcl = bridge.calls[1][0]
+        assert f"exec {{{make_exe}}} all 2>@1" in make_tcl
+
+    async def test_compile_app_no_elf_surfaces_make_output_f12(
+            self, tmp_path, monkeypatch):
+        """B13-F12 修复轮#12: make rc=0 但无 ELF 时（默认目标陷阱类），make
+        输出经 __MAKE_OUTPUT_BEGIN__/END 标记带回，真实错误出现在 BUILD_FAILED
+        消息里，而不是裸的 "no ELF produced"。"""
+        make_exe = "D:/Xilinx/Vivado/2023.1/gnuwin/bin/make.exe"
+        monkeypatch.setattr(ps_bsp, "_find_make", lambda: make_exe)
+        # make "succeeds" (default-target trap would exit 0) but prints the
+        # real diagnostic and produces no ELF.
+        make_ok = {"status": "success", "data":
+                   "__MAKE_OUTPUT_BEGIN__\n"
+                   "make: 'src/main.o' is up to date.\n"
+                   "arm-none-eabi-gcc: error: undefined reference to 'tcp_tmr'\n"
+                   "__MAKE_OUTPUT_END__"}
+        bridge = FakeXsctBridge(results=[_OK, make_ok], workspace=str(tmp_path))
+        r = await ps_bsp.compile_app(bridge, "myapp")
+        assert r["status"] == "error"
+        assert r["error"]["details"]["reason_code"] == "BUILD_FAILED"
+        msg = r["error"]["message"]
+        assert "no ELF produced" in msg
+        assert "undefined reference to 'tcp_tmr'" in msg
+        assert "__MAKE_OUTPUT_BEGIN__" not in msg  # 标记被剥离
+
     async def test_compile_app_make_fallback_includes_full_output(
             self, tmp_path, monkeypatch):
         """D-C: a MAKE_FALLBACK build failure must return the FULL make/compiler

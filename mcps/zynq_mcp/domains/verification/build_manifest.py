@@ -287,7 +287,11 @@ def _discover_cproject_entries(project_path: str) -> list[dict]:
 
 def _app_source_entries(project_path: str, app_name: str) -> list[dict]:
     """C/H/asm sources under {project}/ps/{app}/src or {project}/{app}/src as
-    [{path, sha256}], sorted. Empty list when the app src dir is absent."""
+    [{path, sha256}], sorted. Empty list when the app src dir is absent.
+
+    B13-F13 (修复轮#12): ``.ld`` 链接脚本（lscript.ld）与源码同列——改链接
+    脚本必须换摘要（此前只改 lscript.ld 重编会以同名 sha256 不同内容发布
+    冲突）。"""
     bases = [os.path.join(project_path, app_name, "src")]
     ps_src = os.path.join(project_path, "ps", app_name, "src")
     if os.path.isdir(ps_src):
@@ -297,7 +301,7 @@ def _app_source_entries(project_path: str, app_name: str) -> list[dict]:
     for src in bases:
         if not os.path.isdir(src):
             continue
-        for ext in (".c", ".h", ".s", ".S"):
+        for ext in (".c", ".h", ".s", ".S", ".ld"):
             for p in glob.glob(os.path.join(src, "**", f"*{ext}"), recursive=True):
                 if not os.path.isfile(p):
                     continue
@@ -306,6 +310,25 @@ def _app_source_entries(project_path: str, app_name: str) -> list[dict]:
                     continue
                 seen.add(rel)
                 entries.append({"path": rel, "sha256": sha256_file(p)})
+    entries.sort(key=lambda e: e["path"])
+    return entries
+
+
+def _discover_makefile_init_entries(project_path: str, app_name: str) -> list[dict]:
+    """Vitis per-app build hook ``makefile.init`` as [{path, sha256}].
+
+    B13-F13 (修复轮#12): 构建输入改动必须换摘要——makefile.init 是 Vitis
+    生成 makefile 的定制点（可携带 .DEFAULT_GOAL 等），改动后应形成新
+    revision。
+    """
+    entries = []
+    for base in (os.path.join(project_path, "ps", app_name),
+                 os.path.join(project_path, app_name)):
+        p = os.path.join(base, "makefile.init")
+        if os.path.isfile(p):
+            entries.append({
+                "path": os.path.relpath(p, project_path).replace("\\", "/"),
+                "sha256": sha256_file(p)})
     entries.sort(key=lambda e: e["path"])
     return entries
 
@@ -548,7 +571,9 @@ def publish_ps_build_manifest(snapshot: dict, result: dict,
     source_files = _app_source_entries(pp, app_name)
     # B13-F9 修复轮#9 (黑盒实证): .cproject 携带编译 -D 宏等构建配置——
     # 改宏不换摘要 = 摘要失真（固件行为变了 manifest revision 却不变）。
+    # B13-F13 修复轮#12: makefile.init（Vitis 构建定制点）同族纳入。
     config_files = _discover_cproject_entries(pp)
+    config_files += _discover_makefile_init_entries(pp, app_name)
     revision_inputs = {
         "board_profile_sha256": bp_sha,
         "built_from_platform_revision": plat_rev,

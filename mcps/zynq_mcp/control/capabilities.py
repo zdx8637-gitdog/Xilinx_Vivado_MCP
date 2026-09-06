@@ -134,8 +134,8 @@ DOMAIN_TOOLS: list[Tool] = [
     # B06 third batch — download + debug (registered post B05 freeze)
     Tool(name="ps_download_elf", description="JTAG download ELF to DDR (xsdb dow)",
          inputSchema={"type": "object", "properties": {"elf_path": {"type": "string", "minLength": 1}}, "required": ["elf_path"]}),
-    Tool(name="ps_write_uart", description="Write data to PS UART serial port",
-         inputSchema={"type": "object", "properties": {"port": {"type": "string", "minLength": 1}, "baudrate": {"type": "integer", "minimum": 1}, "data": {"type": "string", "minLength": 1}}, "required": ["port", "data"]}),
+    Tool(name="ps_write_uart", description="Write data to PS UART serial port (text via encoding=utf-8, or binary downlink frames via encoding=hex: the data string is hex-decoded after stripping whitespace)",
+         inputSchema={"type": "object", "properties": {"port": {"type": "string", "minLength": 1}, "baudrate": {"type": "integer", "minimum": 1}, "data": {"type": "string", "minLength": 1}, "encoding": {"type": "string", "enum": ["utf-8", "hex"]}}, "required": ["port", "data"]}),
     # B01 §5 Phase 5 — UART capture lifecycle (start → wait → stop). The
     # capture window opens before ps.download/ps.run so no output is lost;
     # wait_uart_capture matches expected markers instead of guessing a read

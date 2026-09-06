@@ -269,6 +269,38 @@ class TestPublishManifest:
                    for e in cfg)
         assert validate_manifest(m2, "ps_build", resolve_root=root) == []
 
+    def test_ps_revision_changes_when_lscript_or_makefile_init_changes(self, tmp_path):
+        # B13-F13 修复轮#12: 链接脚本 (lscript.ld) 与 Vitis 构建定制点
+        # (makefile.init) 都是构建输入——改动必须换摘要（此前只改 lscript
+        # 重编会以同名 sha256 不同内容发布冲突）。
+        root, snapshot, files = _ps_project(tmp_path)
+        ld = _write(root, "app/src/lscript.ld", b"_STACK_SIZE 0x2000")
+        mi = _write(root, "app/makefile.init", b".DEFAULT_GOAL := all")
+        result = {"status": "success", "data": {"app_name": "app", "built": True}}
+        p1 = publish_ps_build_manifest(snapshot, result, root,
+                                       tool_args={"app_name": "app"})
+        assert p1 is not None
+        with open(ld, "wb") as fh:
+            fh.write(b"_STACK_SIZE 0x10000")
+        p2 = publish_ps_build_manifest(snapshot, result, root,
+                                       tool_args={"app_name": "app"})
+        assert p2 is not None and p2 != p1
+        with open(p2, encoding="utf-8") as fh:
+            m2 = json.load(fh)
+        sf = m2["revision_inputs"]["source_files"]
+        assert any(e["path"].replace("\\", "/") == "app/src/lscript.ld"
+                   for e in sf)
+        cfg = m2["revision_inputs"]["config_files"]
+        assert any(e["path"].replace("\\", "/") == "app/makefile.init"
+                   for e in cfg)
+        assert validate_manifest(m2, "ps_build", resolve_root=root) == []
+        # makefile.init 单独变化也要换摘要（构建定制点同族）
+        with open(mi, "wb") as fh:
+            fh.write(b".DEFAULT_GOAL := all\nEXTRA = 1")
+        p3 = publish_ps_build_manifest(snapshot, result, root,
+                                       tool_args={"app_name": "app"})
+        assert p3 is not None and p3 != p2
+
     def test_snapshot_missing_fields_skip(self, tmp_path):
         root, snapshot, files = _pl_project(tmp_path)
         pl_dir = os.path.join(root, "manifests", "pl")

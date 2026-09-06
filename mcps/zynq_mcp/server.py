@@ -178,13 +178,18 @@ def start_reconcile(guard, ledger_path, workspace_id):
 
 
 def second_instance_report(guard, ledger_path):
+    """F-06: report an already-running instance on STDERR only. stdout is
+    reserved for JSONRPC frames -- printing a bare dict there crashed MCP
+    clients (model_validate_json). The caller exits non-zero so startup
+    scripts can detect the conflict. """
     try:
         ledger, _ = ledger_read_shared(guard, ledger_path, guard.workspace_id)
     except Exception:
         print(json.dumps({"status":"error","error":{"code":"INSTANCE_ALREADY_RUNNING",
             "message":"Another zynq_mcp instance is running","details":{
             "reason_code":"INSTANCE_ALREADY_RUNNING","primary_instance_id":"unknown",
-            "recommended_action":"Connect to the running instance"}}}), flush=True)
+            "recommended_action":"Connect to the running instance"}}}),
+            file=sys.stderr, flush=True)
         return
     ao = ledger.active_operation or {}
     print(json.dumps({"status":"error","error":{"code":"INSTANCE_ALREADY_RUNNING",
@@ -195,7 +200,8 @@ def second_instance_report(guard, ledger_path):
         "active_operation_id":ao.get("operation_id"),
         "active_operation_status":ao.get("status"),
         "current_stage":ledger.context.get("current_stage","IDLE"),
-        "recommended_action":"Connect to the running instance"}}}), flush=True)
+        "recommended_action":"Connect to the running instance"}}}),
+        file=sys.stderr, flush=True)
 
 
 async def _main():
@@ -210,9 +216,9 @@ async def _main():
         try:
             instance_guard.determine_role()
         except InstanceGuardFatalError as e:
-            fatal_error = e; return
+            fatal_error = e; return 1
         if instance_guard.is_secondary:
-            second_instance_report(instance_guard, ledger_path); return
+            second_instance_report(instance_guard, ledger_path); return 1
         ledger = start_reconcile(instance_guard, ledger_path, workspace_id)
         op_registry = OperationRegistry(); op_registry.restore_from_ledger(ledger)
         lifecycle_lock = asyncio.Lock()
@@ -397,5 +403,9 @@ def _persist_shutdown_failure(guard, ledger_path, pid_cleaned, error_msg) -> boo
         return False
 
 
-def main(): asyncio.run(_main())
+def main():
+    rc = asyncio.run(_main())
+    # F-06: honor non-zero exit codes (secondary instance, fatal guard
+    # errors) so launchers can detect the conflict; primary path exits 0.
+    sys.exit(rc if isinstance(rc, int) and rc else 0)
 if __name__ == "__main__": main()

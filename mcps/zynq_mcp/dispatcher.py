@@ -965,8 +965,14 @@ async def _ps_list_serial_ports_wrapper(bridge):
 
 
 async def _ps_write_uart_wrapper(bridge, *, port=None, baudrate=_PS_UART_DEFAULT_BAUD,
-                                   data=None):
-    """Local executor for ps_write_uart."""
+                                   data=None, encoding="utf-8"):
+    """Local executor for ps_write_uart.
+
+    encoding: "utf-8" (default, text) or "hex" (binary downlink frames --
+    the data string is hex-decoded after stripping whitespace, e.g.
+    "a55a 01 85 000f4240a5d132"; payload bytes need not be valid text).
+    The hex channel closes the binary-downlink gap for wire protocols.
+    """
     from mcps.zynq_mcp.adapters.uart import SerialAdapter, SerialAdapterError
     if not isinstance(port, str) or not port.strip():
         return _uart_error("INVALID_ARGUMENT", "port must be a non-empty string",
@@ -974,13 +980,33 @@ async def _ps_write_uart_wrapper(bridge, *, port=None, baudrate=_PS_UART_DEFAULT
     if not isinstance(data, str) and not isinstance(data, bytes):
         return _uart_error("INVALID_ARGUMENT", "data must be str or bytes",
                            code="INVALID_ARGUMENT")
+    if encoding not in ("utf-8", "hex"):
+        return _uart_error("INVALID_ARGUMENT", "encoding must be 'utf-8' or 'hex'",
+                           code="INVALID_ARGUMENT")
+    payload = data
+    if encoding == "hex":
+        if isinstance(data, bytes):
+            return _uart_error("INVALID_ARGUMENT",
+                               "hex encoding requires a str data argument",
+                               code="INVALID_ARGUMENT")
+        compact = "".join(data.split())
+        try:
+            payload = bytes.fromhex(compact)
+        except ValueError:
+            return _uart_error(
+                "INVALID_ARGUMENT",
+                "hex data must be an even-length hex string (whitespace tolerated)",
+                code="INVALID_ARGUMENT")
+        if not payload:
+            return _uart_error("INVALID_ARGUMENT", "hex data must not be empty",
+                               code="INVALID_ARGUMENT")
     adapter = SerialAdapter()
     try:
         adapter.open(port, baudrate)
     except SerialAdapterError as e:
         return _uart_error("SERIAL_OPEN_FAILED", f"open {port}: {e}")
     try:
-        n = adapter.write(data)
+        n = adapter.write(payload)
         return success(data={"port": port, "bytes_written": n}).to_dict()
     except SerialAdapterError as e:
         return _uart_error("SERIAL_WRITE_FAILED", f"write {port}: {e}")

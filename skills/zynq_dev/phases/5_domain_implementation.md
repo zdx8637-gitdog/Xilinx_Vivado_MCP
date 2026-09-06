@@ -86,6 +86,11 @@ wrapper + top；constraints；top 由方案决定）→ `pl_generate_target` →
 `ps_compile`（唯一正式编译入口）→ `ps_get_build_status`（取 `<ELF_PATH>`）→
 `ps_read_elf_info` 校验 → PS Manifest 自动发布。
 
+**写前查询纪律（自写程序源码前的强制动作）**：`ps_create_bsp` 完成后，写任何
+驱动/库相关代码前，先读本工程 BSP 真值源（BSP 目录 `include/` 生成头 +
+`libsrc/` 对应驱动的头/实现源码），按附录「15. 写前查询」索引查官方文档，
+并对照附录「14. 工程层正确姿势库」逐条自查——禁止凭记忆写 API。
+
 ## 5.4 可测性设计（自验证强制规则）
 
 > 测试能力是交付设计的一部分（借鉴行业 DFT/BIST 思想）：以下设施必须随设计

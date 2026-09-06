@@ -72,7 +72,8 @@ Manifest/Artifact** 交接产物，不依赖智能体记忆。
 | S8 | [phases/8_verdict_recovery.md](phases/8_verdict_recovery.md) | `evaluate_observation` + 诊断/恢复 |
 
 通用机制（Operation 纪律、Manifest 链、原子序列模板、构建链、UART 捕获、
-观测判定、恢复阶梯、清理）：见 [appendix_mechanics.md](appendix_mechanics.md)。
+观测判定、恢复阶梯、清理、写前查询与防错库 §14/§15）：见
+[appendix_mechanics.md](appendix_mechanics.md)。
 
 ## 领域知识边界
 
@@ -85,6 +86,10 @@ Manifest/Artifact** 交接产物，不依赖智能体记忆。
 
 框架提供纪律（阶段、门禁、恢复、证据），知识包提供判断——知识包由每个实例
 按需挂载，永不写死在框架里。
+
+**写前查询纪律**：写驱动/库相关代码前必读本工程 BSP 真值源（include/ 生成头 +
+libsrc/ 驱动头/源）并按附录「15. 写前查询」索引查官方文档，禁止凭记忆写 API；
+防错自查见附录「14. 工程层正确姿势库」。
 
 ## 公开边界（硬门禁）
 

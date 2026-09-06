@@ -183,6 +183,8 @@ _PS7_CONFIG_TO_PCW = {
     "irq_f2p": ("PCW_USE_FABRIC_INTERRUPT", "bool"),
     "fclk0_mhz": ("PCW_FPGA0_PERIPHERAL_FREQMHZ", "int"),
     "fclk1_mhz": ("PCW_FPGA1_PERIPHERAL_FREQMHZ", "int"),
+    # B13-F05 (修复轮#12): 端口使能开关（fclk1_mhz 联动注入的显式覆盖点）
+    "fclk1_en": ("PCW_EN_CLK1_PORT", "bool"),
     "uart1_enable": ("PCW_UART1_PERIPHERAL_ENABLE", "bool"),
     "uart1_io": ("PCW_UART1_GRP_FULL_IO", "mio"),
     "ddr": ("PCW_UIPARAM_DDR_PARTNO", "str"),
@@ -215,6 +217,13 @@ async def platform_configure_ps7(adapter, *, config: dict,
             flat[key] = value
     if not flat:
         raise PlatformError("config must contain at least one field", "INVALID_ARGUMENT")
+
+    # B13-F05 (修复轮#12): fclk1_mhz 只设频率参数、不使能 FCLK1 端口——板卡
+    # preset 默认 PCW_EN_CLK1_PORT=0，FCLK_CLK1 引脚不会出现，后续以它为
+    # 时钟源解析为 0 对象（BD 41-701）。设置 fclk1_mhz 即联动
+    # PCW_EN_CLK1_PORT=1；显式传 fclk1_en 则以其为准。
+    if "fclk1_mhz" in flat and "fclk1_en" not in flat:
+        flat["fclk1_en"] = True
 
     prop_parts = []
     updated = []
@@ -424,7 +433,21 @@ async def platform_connect_clock(adapter, *, source: str,
         if not isinstance(t, str) or not t.strip():
             raise PlatformError("each target must be a non-empty string", "INVALID_ARGUMENT")
         clean.append(t.strip())
-    lines = [f"connect_bd_net [get_bd_pins {source}] [get_bd_pins {t}]" for t in clean]
+    # B13-F04 (修复轮#12): 源既可以是 cell 引脚（processing_system7_0/
+    # FCLK_CLK0）也可以是顶层端口（platform_make_external 创建的时钟端口）。
+    # 先按 pin 解析，再按 port 解析；都不命中时给出明确 CLOCK_SOURCE_NOT_FOUND
+    # 而非通用 BD 5-4（误导排查）。
+    lines = [
+        f"set __src [get_bd_pins -quiet {source}]\n"
+        "if {[llength $__src] == 0} {\n"
+        f"  set __src [get_bd_ports -quiet {source}]\n"
+        "}\n"
+        "if {[llength $__src] == 0} {\n"
+        f"  error \"CLOCK_SOURCE_NOT_FOUND:{{{source}}}\"\n"
+        "}\n",
+    ]
+    for t in clean:
+        lines.append(f"connect_bd_net $__src [get_bd_pins {t}]")
     await _run_tcl(adapter, "\n".join(lines), "connect_clock")
     return {"status": "success", "data": {"source": source, "targets": clean,
                                           "count": len(clean)}}
@@ -620,11 +643,16 @@ async def platform_set_address(adapter, *, segment: str, base,
         f"  set __parts [split {{{segment}}} /]\n"
         "  set __ip [lindex $__parts 0]\n"
         "  set __intf [lindex $__parts 1]\n"
+        # B13-F07 (修复轮#12): 单格 -of_objects 形式在真实 Vivado 2023.1 报
+        # [Common 17-161]（空 objects），用已验证的通配形式枚举全部 intf
+        # 引脚再按 cell/intf 过滤；比较用 -nocase（BD 引脚名小写 vs 输入
+        # 大写会静默不匹配）。
         "  set __pins [get_bd_intf_pins -quiet -of_objects "
-        "[get_bd_cells -quiet $__ip]]\n"
+        "[get_bd_cells -quiet *]]\n"
         "  set __segs {}\n"
         "  foreach __p $__pins {\n"
-        "    if {[string trimleft $__p /] eq \"$__ip/$__intf\"} {\n"
+        "    if {[string equal -nocase [string trimleft $__p /] "
+        "\"$__ip/$__intf\"]} {\n"
         "      set __segs [get_bd_addr_segs -quiet -of_objects $__p]\n"
         "      break\n"
         "    }\n"

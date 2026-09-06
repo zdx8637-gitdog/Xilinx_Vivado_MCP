@@ -779,8 +779,18 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
             "default Vivado gnuwin/bin)",
             details={"app_name": app_name})
     debug_dir = _safe_join_path(os.path.join(app_dir, "Debug"))
+    # B13-F12 (修复轮#12) 两处修复:
+    # ① 显式 `all` 目标——Vitis 生成的 Debug/makefile 通过
+    #    `-include $(C_DEPS)` 引入 .d 文件，其显式目标 (src/*.o) 先于 all:
+    #    出现，裸 make 的默认目标变成第一个对象文件：只建一个 .o 即 exit 0、
+    #    无 ELF、无输出（"默认目标陷阱"）。
+    # ② `2>@1` 合并 stderr 并用 puts 把 make 输出带进 result.data——编译
+    #    错误/警告不再被 Tcl exec 吞掉。
     tcl_make = (f"cd {{{debug_dir}}}\n"
-                f"exec {{{_safe_join_path(make_exe)}}}")
+                f"set __mkout [exec {{{_safe_join_path(make_exe)}}} all 2>@1]\n"
+                "puts \"__MAKE_OUTPUT_BEGIN__\"\n"
+                "puts $__mkout\n"
+                "puts \"__MAKE_OUTPUT_END__\"")
     result = await safe_eval(bridge, tcl_make,
                              timeout_s=_MAKE_TIMEOUT_S, tolerate_stderr=True)
     verr = extract_bridge_error(result)
@@ -807,6 +817,13 @@ async def compile_app(bridge: XsctBridge, app_name: str) -> dict:
         detail = ""
         if isinstance(result, dict) and result.get("status") == "success":
             detail = result.get("data")
+        if isinstance(detail, str):
+            # B13-F12: 从 __MAKE_OUTPUT_BEGIN__/END 标记间取出 make 输出
+            import re as _re
+            m = _re.search(r"__MAKE_OUTPUT_BEGIN__(.*?)__MAKE_OUTPUT_END__",
+                           detail, _re.S)
+            if m:
+                detail = m.group(1).strip()
         if not isinstance(detail, str) or not detail.strip():
             detail = ""
         capped = _cap_build_output(detail) if detail else detail

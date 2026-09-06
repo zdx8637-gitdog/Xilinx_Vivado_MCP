@@ -245,6 +245,28 @@ class TestConfigurePs7:
         assert "CONFIG.PCW_GPIO_EMIO_GPIO_WIDTH {64}" in tcl
         assert "CONFIG.PCW_GPIO_EMIO_GPIO_IO {1}" in tcl
 
+    @pytest.mark.asyncio
+    async def test_fclk1_mhz_enables_clk1_port_f05(self):
+        """B13-F05 修复轮#12: fclk1_mhz 只设频率时 FCLK1 引脚不出现
+        (preset PCW_EN_CLK1_PORT=0)——设置频率必须联动使能端口。"""
+        adapter = _FakeAdapter()
+        out = await platform_configure_ps7(adapter, config={"fclk1_mhz": 50})
+        assert out["status"] == "success"
+        assert out["data"]["updated"] == ["fclk1_mhz", "fclk1_en"]
+        tcl = _last_tcl(adapter)
+        assert "CONFIG.PCW_FPGA1_PERIPHERAL_FREQMHZ {50}" in tcl
+        assert "CONFIG.PCW_EN_CLK1_PORT {1}" in tcl
+
+    @pytest.mark.asyncio
+    async def test_fclk1_explicit_en_overrides_f05(self):
+        """显式 fclk1_en 覆盖联动注入（可为 0）。"""
+        adapter = _FakeAdapter()
+        out = await platform_configure_ps7(adapter, config={
+            "fclk1_mhz": 50, "fclk1_en": False})
+        assert out["data"]["updated"] == ["fclk1_mhz", "fclk1_en"]
+        tcl = _last_tcl(adapter)
+        assert "CONFIG.PCW_EN_CLK1_PORT {0}" in tcl
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  3. IP management
@@ -437,6 +459,20 @@ class TestConnectClock:
         assert "smartconnect_0/aclk" in tcl and "axi_gpio_led/s_axi_aclk" in tcl
 
     @pytest.mark.asyncio
+    async def test_source_resolves_pin_then_port_f04(self):
+        """B13-F04 修复轮#12: 源先按 pin 解析、回退按顶层端口解析，都不
+        命中时给出明确 CLOCK_SOURCE_NOT_FOUND 而非通用 BD 5-4。"""
+        adapter = _FakeAdapter()
+        out = await platform_connect_clock(adapter,
+            source="sys_clk", targets=["my_ip/aclk"])
+        assert out["status"] == "success"
+        tcl = _last_tcl(adapter)
+        assert "set __src [get_bd_pins -quiet sys_clk]" in tcl
+        assert "set __src [get_bd_ports -quiet sys_clk]" in tcl
+        assert 'error "CLOCK_SOURCE_NOT_FOUND:{sys_clk}"' in tcl
+        assert "connect_bd_net $__src [get_bd_pins my_ip/aclk]" in tcl
+
+    @pytest.mark.asyncio
     async def test_rejects_empty_targets(self):
         with pytest.raises(PlatformError) as ei:
             await platform_connect_clock(_FakeAdapter(), source="a/clk", targets=[])
@@ -501,7 +537,11 @@ class TestSetAddress:
         # targets the resolved segment object.
         assert "set __req {axi_gpio_led/S_AXI}" in tcl
         assert "set __segs [get_bd_addr_segs -quiet $__req]" in tcl
-        assert 'get_bd_intf_pins -quiet -of_objects [get_bd_cells -quiet $__ip]' in tcl
+        # B13-F07 修复轮#12: 单格 -of_objects 形式在真实 Vivado 2023.1 报
+        # 17-161——用通配枚举；大小写不敏感比较（BD 引脚名 s_axi vs 输入 S_AXI）。
+        assert 'get_bd_intf_pins -quiet -of_objects [get_bd_cells -quiet *]' in tcl
+        assert 'get_bd_cells -quiet $__ip]' not in tcl
+        assert 'string equal -nocase [string trimleft $__p /]' in tcl
         assert 'error "SEGMENT_NOT_FOUND:{axi_gpio_led/S_AXI}"' in tcl
         assert "set_property CONFIG.C_BASEADDR {0x41200000} $__seg" in tcl
         assert "C_HIGHADDR" not in tcl

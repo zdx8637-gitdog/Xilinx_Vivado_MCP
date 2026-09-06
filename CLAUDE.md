@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）FPGA 开发框架。Claude 通过 MCP Server 操作 Vivado/XSim/Vitis 等 EDA 工具，按「三域四层 + Brick」计划增量构建。
 
 - 冻结顶层架构：[docs/architecture_ai_zynq7020.md](docs/architecture_ai_zynq7020.md) v2.3.1
-- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线）；B11 ✅ **COMPLETE（2026-08-16）**：泛化框架黑盒验证——Skill/MCP 去 GPIO 化 + 6-LED 考题，全六阶段闭环（输入冻结见 [B11_phase4_blackbox_basis.md](docs/development/tests/B11_phase4_blackbox_basis.md)）；B12 ✅ **完成（2026-08-29）**：数据采集链路（AD7606C-16）——A1 DMA 环回白盒+黑盒 PASS、A2 白盒真板实测成功（盲测通道已识别）+ 黑盒（B 模式）从公开契约独立复现全流程并真实验收 PASS（CH6、9.9765Hz、Vpp 8820 LSB，三方对账一致）；**B13 ✅ P4 完成（2026-09-05）**：白盒 PASS（F1–F8 发现）+ 黑盒 PASS（5 缺陷修复、契约 v0.5 全判据机读通过、2.087MB/s、三档 ±0.5%、L2 1:1、verify 12/12）→ 框架升级修复轮#1–#10（M1 环合法化/M2 平台原子/M3 确定性/M4 元数据/M5 幂等/Skill 四补/黑白盒反馈/摘要覆盖/ADDRESSING 注入）已合入 master；验证方法论 v2（L0–L3 + 行为偏离审计，[validation_methodology.md](docs/development/validation_methodology.md)）+ 偏离审计器 tools/audit/bypass_audit.py；里程碑 [B13_P4_MILESTONE.md](docs/development/tests/B13_P4_MILESTONE.md)；MCP 109 工具（11 control + 98 domain）。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；B11 规划：[docs/development/mcp/B11_plan.md](docs/development/mcp/B11_plan.md)）
+- Brick 状态索引：[docs/brick_development_plan.md](docs/brick_development_plan.md)（B00–B09 COMPLETE；B09 公开 MCP 纯黑盒验收 PASS（O7 R3，2026-08-13），契约勘误已关闭；B10/O8 冻结包已交付（2026-08-14，用户确认 GPIO v1 稳定基线）；B11 ✅ **COMPLETE（2026-08-16）**：泛化框架黑盒验证——Skill/MCP 去 GPIO 化 + 6-LED 考题，全六阶段闭环（输入冻结见 [B11_phase4_blackbox_basis.md](docs/development/tests/B11_phase4_blackbox_basis.md)）；B12 ✅ **完成（2026-08-29）**：数据采集链路（AD7606C-16）——A1 DMA 环回白盒+黑盒 PASS、A2 白盒真板实测成功（盲测通道已识别）+ 黑盒（B 模式）从公开契约独立复现全流程并真实验收 PASS（CH6、9.9765Hz、Vpp 8820 LSB，三方对账一致）；**B13 ✅ P4 完成（2026-09-05）**：白盒 PASS（F1–F8 发现）+ 黑盒 PASS（5 缺陷修复、契约 v0.5 全判据机读通过、2.087MB/s、三档 ±0.5%、L2 1:1、verify 12/12）→ 框架升级修复轮#1–#10（M1 环合法化/M2 平台原子/M3 确定性/M4 元数据/M5 幂等/Skill 四补/黑白盒反馈/摘要覆盖/ADDRESSING 注入）已合入 master；P4b 暴露式白盒复测完成（6/8 gate，F-25/F-19 待裁定）；Skill 增附录 §14 工程层正确姿势库 + §15 写前查询纪律（2026-09-06，机械门禁 14/14）；修复轮 #11 立项（白盒报告1 产品缺陷：F-25/F-19，首要）见 [B13_fix_round_11_plan.md](docs/development/tests/B13_fix_round_11_plan.md)；修复轮 #12 立项（报告1 框架发现 8 项 + 效率吸收：ps_bsp_grep + 响应附注）见 [B13_fix_round_12_plan.md](docs/development/tests/B13_fix_round_12_plan.md)；验证方法论 v2（L0–L3 + 行为偏离审计，[validation_methodology.md](docs/development/validation_methodology.md)）+ 偏离审计器 tools/audit/bypass_audit.py；里程碑 [B13_P4_MILESTONE.md](docs/development/tests/B13_P4_MILESTONE.md)；MCP 109 工具（11 control + 98 domain）。B10 发布清单：[docs/development/mcp/B10_freeze_manifest.md](docs/development/mcp/B10_freeze_manifest.md)；B11 规划：[docs/development/mcp/B11_plan.md](docs/development/mcp/B11_plan.md)）
 - Execution Observation：O1–O6 FROZEN，O7 R3 PASS，O8 冻结包已交付（2026-08-14）
 - 根目录是新的 core Git 仓库（分支 main → 远端 master，925 个文件）：基线 commit `4e0d148`，tag `o7r3-baseline-20260813` 锁定 O7 R3 基线；远端 origin = https://github.com/zdx8637-gitdog/Xilinx_Vivado_MCP（旧内容已按授权覆盖替换，原旧远程 HEAD `59f2abb` 已记录）。`Xilinx_Vivado_MCP/`、`Xilinx_Vitis_MCP/`、`zynq_platforms/` 三个旧仓库为 legacy/已出范围（保留在磁盘、各自独立且已停更的 Git 历史，不被新仓库跟踪）。**B13 升级分支 framework-iteration 已 fast-forward 合入 master（2026-09-05，HEAD `2f72394`）。**
 - 会话纪律速查（上下文压缩后必读）：[docs/development/B12_a2_working_discipline.md](docs/development/B12_a2_working_discipline.md)——零轮询/串行执行/盲测保密/缺陷口径/当前状态
@@ -37,6 +37,20 @@ AI Agent（Claude Code）驱动的 Zynq-7020（ALINX AX7020，xc7z020clg400-2）
 
 停不下来的判断标准：同一问题连续两轮没有新增证据且没有新测试 → 必须按上面
 三动作落地为清单+假设+测试，而不是继续想。
+
+## 🤖 子代理等待纪律（goal 轮与子代理并存时必读）
+
+**一旦派发子代理（subagent / subagent_fork），后续 goal 自动续跑轮次只做一件
+事：等待子代理答复。** 禁止在 goal 轮里轮询子代理进度——list_agents、
+进度文件、git status "推测是否开工" 全部禁止：goal 轮节奏远快于子代理的
+真实进展，轮询必然误判"卡死/无产出"并错误打断正在工作的子代理（修复轮 #12
+的实证教训：子代理读码规划被误判停滞而中断，其实它完成了全量定位快照）。
+
+- 子代理完成或被中断时，运行时会主动通知——届时再处理其答复；
+- 需要追加指令/决策时用 `send_message`（排队语义：等其当前回合结束后处理）；
+- 子代理报告了真实阻塞（明确说出"卡住/无法继续"）才允许介入；
+- 若确有硬超时必须打断，先经 `send_message` 追问一次，无响应才
+  `interrupt_agent`——不得用"没看到文件写入"作为打断依据。
 
 ## 常用命令
 
